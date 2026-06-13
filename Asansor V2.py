@@ -215,9 +215,8 @@ def tum_kombinasyonlari_hesapla(kyg, kyd, kapasite, sistem):
                 if not uygun_ll_listesi:
                     continue  # Bu kuyuya standart bir kapı sığmıyor
                     
+                gecerli_ll_ve_tmg = []
                 for secilen_ll in uygun_ll_listesi:
-                    kbg_son = kbg_max
-                    
                     # TMG (Toplam Mekanizma Genişliği) formülleri
                     if mek_adi == "Merkezi 2 panel": tmg = (2.0 * secilen_ll) + 50
                     elif mek_adi == "Merkezi 4 panel": tmg = (1.5 * secilen_ll) + 50
@@ -227,16 +226,24 @@ def tum_kombinasyonlari_hesapla(kyg, kyd, kapasite, sistem):
                     else: tmg = (2.0 * secilen_ll) + 50
                     
                     # TMG kuyuya sığıyor mu? (50 mm çalışma toleransı ile)
-                    if tmg + 50 > kullanilabilir_w:
-                        continue
-
+                    if tmg + 50 <= kullanilabilir_w:
+                        gecerli_ll_ve_tmg.append((secilen_ll, tmg))
+                        
+                if not gecerli_ll_ve_tmg:
+                    continue
+                    
+                # En büyükten başlayarak 3 adede kadar al (2 basamak altı)
+                gecerli_ll_ve_tmg.sort(key=lambda x: x[0], reverse=True)
+                sinirli_ll_listesi = gecerli_ll_ve_tmg[:3]
+                
+                for secilen_ll, tmg in sinirli_ll_listesi:
                     sonuclar.append({
                         "cw_konum":   cw_konum,
                         "mek":        mek_adi,
                         "hiz":        hiz,
                         "ray_isim":   ray["isim"],
                         "ray_taban":  ray_taban,
-                        "kbg":        round(kbg_son),
+                        "kbg":        round(kbg_max),
                         "kbd":        round(kbd),
                         "ray_x_sol":  ray_x_sol,
                         "ray_x_sag":  ray_x_sag,
@@ -630,12 +637,14 @@ for tab, sistem in zip(tabs, uygun):
         # SVG çizim — uid ile clipPath çakışmasını önle
         uid = f"{sistem['id']}_{secim_idx}"
         svg_html, svg_h = svg_ciz(r, kyg, kyd, uid=uid)
-        st.markdown(svg_html, unsafe_allow_html=True)
+        svg_cleaned = svg_html.replace("\n", " ")
+        st.markdown(f'<div align="center">{svg_cleaned}</div>', unsafe_allow_html=True)
 
         # Kapı mekanizması SVG'sini çizdir
         st.markdown("#### 🚪 Kapı Mekanizması — Üstten Görünüş")
         kapi_html, kapi_h = kapi_mekanizmasi_svg(r["mek"], r["kbg"], r["ll"], r["tmg"])
-        st.markdown(kapi_html, unsafe_allow_html=True)
+        kapi_cleaned = kapi_html.replace("\n", " ")
+        st.markdown(f'<div align="center">{kapi_cleaned}</div>', unsafe_allow_html=True)
 
         # Özet kutucuklar
         col1, col2, col3, col4 = st.columns(4)
