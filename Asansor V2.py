@@ -97,8 +97,7 @@ def kbd_hesapla(kyd, on_bosluk, cw_arkadan):
 
 def ray_y_hesapla(kyd, on_bosluk, cw_arkadan):
     kbd = kbd_hesapla(kyd, on_bosluk, cw_arkadan)
-    # Kabin on_bosluk'tan başladığı için, ortası on_bosluk + kbd/2 olur
-    return on_bosluk + kbd / 2, kbd
+    return KABIN_ARKA_BOSLUGU + kbd / 2, kbd
 
 def cw_yandan_karar(kyg, kyd, on_bosluk, ray_taban):
     """
@@ -134,13 +133,13 @@ def cw_yandan_karar(kyg, kyd, on_bosluk, ray_taban):
         if cw_ust < 0 or cw_alt > kyd:
             return {"gecerli": False, "senaryo": "gecersiz",
                     "mesaj": "CW ortalandığında kuyu dışına çıkıyor"}
-        ray_x_sag = kyg - UZAK_MONTE_MESAFE - ray_taban / 2
+        ray_x_sag = kyg - RAY_DUVAR_BOSLUGU - ray_taban / 2
         return {"gecerli": True, "senaryo": "cakisiyor",
                 "cw_ust": cw_ust, "cw_alt": cw_alt,
                 "ray_x_sag": ray_x_sag,
                 "mesaj": f"Ray ana ağırlıkla çakışıyor → ray {UZAK_MONTE_MESAFE}mm uzak monte"}
     else:
-        ray_x_sag = kyg - CW_B_MESAFE - ray_taban / 2
+        ray_x_sag = kyg - RAY_DUVAR_BOSLUGU - ray_taban / 2
         return {"gecerli": True, "senaryo": "cakismiyor",
                 "cw_ust": cw_ust_k, "cw_alt": cw_alt_k,
                 "ray_x_sag": ray_x_sag,
@@ -279,7 +278,7 @@ def svg_ciz(r, kyg, kyd, uid="0"):
     SVG_H = int(kh + MARGIN * 2 + 40)
 
     # Kabin kenarları (mm cinsinden)
-    kabin_sol  = r["ray_x_sol"] + r["ray_taban"]/2 + YATAKLAMA_TOPLAM/2
+    kabin_sol  = r["ray_x_sol"] - r["ray_taban"]/2 - YATAKLAMA_TOPLAM/2
     kabin_ust  = r["on_bosluk"]
     kabin_sag  = kabin_sol + r["kbg"]
     kabin_alt  = kabin_ust + r["kbd"]
