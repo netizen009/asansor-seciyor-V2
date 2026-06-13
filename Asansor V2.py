@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 
 st.set_page_config(page_title="Asansör Sistem Seçici v2", page_icon="🛗", layout="wide")
 
@@ -304,8 +305,8 @@ def svg_ciz(r, kyg, kyd, uid="0"):
         text-anchor="middle" dominant-baseline="central"
         font-size="9" fill="#1D4ED8">{r["mek"]}</text>"""
 
-    svg = f"""<svg width="100%" viewBox="0 0 {SVG_W} {SVG_H}"
-     xmlns="http://www.w3.org/2000/svg">
+    svg = f"""<svg width="{SVG_W}" height="{SVG_H}" viewBox="0 0 {SVG_W} {SVG_H}"
+     xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto;">
 <defs>
   <clipPath id="{clip_id}">
     <rect x="{kbx1:.1f}" y="{kby1:.1f}" width="{kbw:.1f}" height="{kbh:.1f}"/>
@@ -397,7 +398,17 @@ def svg_ciz(r, kyg, kyd, uid="0"):
 <text x="{MARGIN-4:.1f}" y="{MARGIN+16:.1f}" font-size="9" fill="#94A3B8"
       transform="rotate(-90,{MARGIN-4:.1f},{MARGIN+16:.1f})">y ↓</text>
 </svg>"""
-    return svg
+
+    # Tam HTML sarmalayıcı — st.components.v1.html() ile render için
+    html = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><style>
+  body {{ margin:0; padding:8px; background:transparent; display:flex; justify-content:center; }}
+  svg  {{ max-width:100%; height:auto; }}
+</style></head>
+<body>{svg}</body>
+</html>"""
+    return html, SVG_H
 
 # ─────────────────────────────────────────────────────────────────
 #  STREAMLIT ARAYÜZÜ
@@ -520,8 +531,8 @@ for tab, sistem in zip(tabs, uygun):
 
         # SVG çizim — uid ile clipPath çakışmasını önle
         uid = f"{sistem['id']}_{secim_idx}"
-        svg_kodu = svg_ciz(r, kyg, kyd, uid=uid)
-        st.markdown(svg_kodu, unsafe_allow_html=True)
+        svg_html, svg_h = svg_ciz(r, kyg, kyd, uid=uid)
+        components.html(svg_html, height=svg_h + 30, scrolling=False)
 
         # Özet kutucuklar
         col1, col2, col3, col4 = st.columns(4)
