@@ -145,7 +145,23 @@ def cw_yandan_karar(kyg, kyd, on_bosluk, ray_taban):
                 "ray_x_sag": ray_x_sag,
                 "mesaj": "Ray çakışmıyor → standart konumda"}
 
-def kbg_hesapla(ray_x_sol, ray_x_sag, ray_taban):
+def kbg_hesapla(kyg, ray_taban, cw_konum, cw_senaryo=None):
+
+    if cw_konum == "Arkadan":
+        return kyg - 100 - ray_taban - 75 - 75 - ray_taban - 100
+
+    else:
+        cw_mesafe = 310 if cw_senaryo == "cakisiyor" else 300
+
+        return (
+            kyg
+            - 100
+            - ray_taban
+            - 75
+            - 75
+            - ray_taban
+            - cw_mesafe
+        )
     return ray_x_sag - ray_x_sol - ray_taban - YATAKLAMA_TOPLAM
 
 def tum_kombinasyonlari_hesapla(kyg, kyd, kapasite, sistem):
@@ -184,14 +200,23 @@ def tum_kombinasyonlari_hesapla(kyg, kyd, kapasite, sistem):
                     cw_alt    = cw["cw_alt"]
                     cw_senaryo = cw["senaryo"]
                     cw_mesaj   = cw["mesaj"]
-                    kbg_max = kbg_hesapla(ray_x_sol, ray_x_sag, ray_taban)
+                    kbg_max = kbg_hesapla(
+    kyg,
+    ray_taban,
+    "Yandan",
+    cw_senaryo
+)
                     kullanilabilir_w = ray_x_sag + ray_taban / 2
                 else:
                     ray_x_sag = kyg - RAY_DUVAR_BOSLUGU - ray_taban / 2
                     cw_ust = cw_alt = None
                     cw_senaryo = "—"
                     cw_mesaj   = "Arkadan CW"
-                    kbg_max = kbg_hesapla(ray_x_sol, ray_x_sag, ray_taban)
+                    kbg_max = kbg_hesapla(
+    kyg,
+    ray_taban,
+    "Arkadan"
+)
                     kullanilabilir_w = kyg
 
                 if kbg_max <= 200:  # minimum kabin genişliği
