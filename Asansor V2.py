@@ -553,18 +553,18 @@ elif "var" in mr_sec: mr_var = True
 
 # ── Hesapla ──────────────────────────────────────────────────────
 seyir    = (kat - 1) * KAT_YUKSEKLIGI
-overhead = kuyu_boy - pit - seyir
+Kuyu Üst Boşluk = kuyu_boy - pit - seyir
 
 # Metrik satırı
 c1,c2,c3,c4 = st.columns(4)
 c1.metric("Seyir Yüksekliği", f"{seyir/1000:.1f} m")
-c2.metric("Overhead (Hesaplanan)", f"{overhead} mm",
-          delta="✓" if overhead > 0 else "✗ Yetersiz",
-          delta_color="normal" if overhead > 0 else "inverse")
+c2.metric("Kuyu Üst Boşluk (Hesaplanan)", f"{Kuyu Üst Boşluk} mm",
+          delta="✓" if Kuyu Üst Boşluk > 0 else "✗ Yetersiz",
+          delta_color="normal" if Kuyu Üst Boşluk > 0 else "inverse")
 c3.metric("Pit", f"{pit} mm")
 
-if overhead <= 0:
-    st.error(f"Overhead negatif ({overhead} mm) — kuyu boyunu veya kat sayısını kontrol edin.")
+if Kuyu Üst Boşluk <= 0:
+    st.error(f"Kuyu Üst Boşluk negatif ({Kuyu Üst Boşluk} mm) — kuyu boyunu veya kat sayısını kontrol edin.")
     st.stop()
 
 # Sistem filtrele
@@ -572,7 +572,7 @@ uygun = [s for s in SISTEMLER if
          s["kap_min"] <= kapasite <= s["kap_max"] and
          kat <= s["kat_max"] and
          pit >= s["pit_min"] and
-         overhead >= s["oh_min"] and
+         Kuyu Üst Boşluk >= s["oh_min"] and
          (mr_var is None or s["mr"] == mr_var)]
 
 c4.metric("Uygun Sistem", len(uygun))
@@ -668,7 +668,7 @@ for tab, sistem in zip(tabs, uygun):
                 for dez in sistem["dezavantajlar"]:
                     st.markdown(f"- {dez}")
             st.caption(f"Pit min: {sistem['pit_min']}mm | "
-                      f"Overhead min: {sistem['oh_min']}mm | "
+                      f"Kuyu Üst Boşluk min: {sistem['oh_min']}mm | "
                       f"Maks kat: {sistem['kat_max']}")
 
 # ── Notlar ───────────────────────────────────────────────────────
