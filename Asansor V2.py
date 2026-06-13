@@ -223,8 +223,9 @@ def tum_kombinasyonlari_hesapla(kyg, kyd, kapasite, sistem):
 #  SVG ÜST GÖRÜNÜŞ
 # ─────────────────────────────────────────────────────────────────
 
-def svg_ciz(r, kyg, kyd):
-    """r: tek bir kombinasyon dict'i"""
+def svg_ciz(r, kyg, kyd, uid="0"):
+    """r: tek bir kombinasyon dict'i, uid: unique id (clipPath çakışmasını önler)"""
+    clip_id = f"cb_{uid}"
     SVG_W   = 640
     MARGIN  = 55
     ETIKET  = 60
@@ -290,7 +291,7 @@ def svg_ciz(r, kyg, kyd):
         x2t = kbx1;           y2t = kby1 + i*adim
         tarama += (f'<line x1="{x1t:.1f}" y1="{y1t:.1f}" '
                    f'x2="{x2t:.1f}" y2="{y2t:.1f}" '
-                   f'stroke="#94A3B8" stroke-width="0.4" clip-path="url(#cb)"/>')
+                   f'stroke="#94A3B8" stroke-width="0.4" clip-path="url(#{clip_id})"/>')
 
     # Mekanizma kutu (kapı tarafı)
     mek_h = px(r["on_bosluk"])
@@ -306,7 +307,7 @@ def svg_ciz(r, kyg, kyd):
     svg = f"""<svg width="100%" viewBox="0 0 {SVG_W} {SVG_H}"
      xmlns="http://www.w3.org/2000/svg">
 <defs>
-  <clipPath id="cb">
+  <clipPath id="{clip_id}">
     <rect x="{kbx1:.1f}" y="{kby1:.1f}" width="{kbw:.1f}" height="{kbh:.1f}"/>
   </clipPath>
 </defs>
@@ -517,8 +518,9 @@ for tab, sistem in zip(tabs, uygun):
             else:
                 st.success(f"✅ {r['cw_mesaj']}")
 
-        # SVG çizim
-        svg_kodu = svg_ciz(r, kyg, kyd)
+        # SVG çizim — uid ile clipPath çakışmasını önle
+        uid = f"{sistem['id']}_{secim_idx}"
+        svg_kodu = svg_ciz(r, kyg, kyd, uid=uid)
         st.markdown(svg_kodu, unsafe_allow_html=True)
 
         # Özet kutucuklar
