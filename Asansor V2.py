@@ -278,7 +278,7 @@ def svg_ciz(r, kyg, kyd, uid="0"):
     SVG_H = int(kh + MARGIN * 2 + 40)
 
     # Kabin kenarları (mm cinsinden)
-    kabin_sol  = r["ray_x_sol"] - r["ray_taban"]/2 - YATAKLAMA_TOPLAM/2
+    kabin_sol  = r["ray_x_sol"] + r["ray_taban"]/2 + YATAKLAMA_TOPLAM/2
     kabin_ust  = r["on_bosluk"]
     kabin_sag  = kabin_sol + r["kbg"]
     kabin_alt  = kabin_ust + r["kbd"]
