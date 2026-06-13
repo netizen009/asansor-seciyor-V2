@@ -276,28 +276,18 @@ def svg_ciz(r, kyg, kyd, uid="0"):
     SVG_H = int(kh + MARGIN * 2 + 40)
 
     # Kabin kenarları (mm cinsinden)
-    if r["cw_konum"] == "Arkadan":
-        kullanilabilir_alan = kyg
-        offset = 0
-    else:
-        kullanilabilir_alan = kyg - CW_B_MESAFE
-        offset = 0
-        
-    kabin_sol = offset + (kullanilabilir_alan - r["kbg"]) / 2
-    kabin_ust = r["on_bosluk"]
-    kabin_sag = kabin_sol + r["kbg"]
-    kabin_alt = kabin_ust + r["kbd"]
+    kabin_sol  = r["ray_x_sol"] - r["ray_taban"]/2 - YATAKLAMA_TOPLAM/2
+    kabin_ust  = r["on_bosluk"]
+    kabin_sag  = kabin_sol + r["kbg"]
+    kabin_alt  = kabin_ust + r["kbd"]
 
     kbx1 = sx(kabin_sol);  kby1 = sy(kabin_ust)
     kbx2 = sx(kabin_sag);  kby2 = sy(kabin_alt)
     kbw  = kbx2 - kbx1;    kbh  = kby2 - kby1
 
-    # Ray px (görselde kabine göre yeniden konumlandırma)
-    ray_x_sol_gorsel = kabin_sol + YATAKLAMA_TOPLAM/2 + r["ray_taban"]/2
-    ray_x_sag_gorsel = kabin_sag - YATAKLAMA_TOPLAM/2 - r["ray_taban"]/2
-    
-    rsx  = sx(ray_x_sol_gorsel); rsy  = sy(r["ray_y"])
-    rdx  = sx(ray_x_sag_gorsel); rdy  = sy(r["ray_y"])
+    # Ray px
+    rsx  = sx(r["ray_x_sol"]); rsy  = sy(r["ray_y"])
+    rdx  = sx(r["ray_x_sag"]); rdy  = sy(r["ray_y"])
     rr   = max(5, px(15))
 
     # CW
@@ -315,11 +305,8 @@ def svg_ciz(r, kyg, kyd, uid="0"):
   <line x1="{cw_cx:.1f}" y1="{cy1:.1f}" x2="{cw_cx:.1f}" y2="{cy2:.1f}"
         stroke="#DC2626" stroke-width="0.5" stroke-dasharray="3 2"/>"""
     elif r["cw_konum"] == "Arkadan":
-        # Arkadan CW: genişlik 1380 mm (CW_Y_BOYU), derinlik 150 mm (CW_X_BOYU)
-        cw_w = CW_Y_BOYU
-        cw_h = CW_X_BOYU
-        cx1 = sx(kyg/2 - cw_w/2); cx2 = sx(kyg/2 + cw_w/2)
-        cy1 = sy(kyd - ARKADAN_CW_PAYI + (ARKADAN_CW_PAYI - cw_h)/2); cy2 = cy1 + px(cw_h)
+        cx1 = sx(kabin_sol); cx2 = sx(kabin_sag)
+        cy1 = sy(kyd - ARKADAN_CW_PAYI); cy2 = sy(kyd)
         cw_cx=(cx1+cx2)/2; cw_cy=(cy1+cy2)/2
         cw_svg = f"""
   <rect x="{cx1:.1f}" y="{cy1:.1f}" width="{cx2-cx1:.1f}" height="{cy2-cy1:.1f}"
@@ -632,7 +619,7 @@ for tab, sistem in zip(tabs, uygun):
         st.markdown("#### 📐 Üstten Görünüş Çizimi")
 
         secenekler = [
-            f"#{i+1} | {r['cw_konum']} CW | {r['mek']} | {r['hiz']} m/s | "
+            f"#{i+1} | {r['cw_konum']} CW | {r['mek']} | Kapı LL={r['ll']}mm | {r['hiz']} m/s | "
             f"KbG={r['kbg']}mm KbD={r['kbd']}mm"
             for i, r in enumerate(kombinasyonlar)
         ]
