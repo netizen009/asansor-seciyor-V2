@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 
 st.set_page_config(page_title="Asansör Sistem Seçici v2", page_icon="🛗", layout="wide")
 
@@ -96,7 +97,8 @@ def kbd_hesapla(kyd, on_bosluk, cw_arkadan):
 
 def ray_y_hesapla(kyd, on_bosluk, cw_arkadan):
     kbd = kbd_hesapla(kyd, on_bosluk, cw_arkadan)
-    return KABIN_ARKA_BOSLUGU + kbd / 2, kbd
+    # Kabin on_bosluk'tan başladığı için, ortası on_bosluk + kbd/2 olur
+    return on_bosluk + kbd / 2, kbd
 
 def cw_yandan_karar(kyg, kyd, on_bosluk, ray_taban):
     """
@@ -188,34 +190,65 @@ def tum_kombinasyonlari_hesapla(kyg, kyd, kapasite, sistem):
                     cw_alt    = cw["cw_alt"]
                     cw_senaryo = cw["senaryo"]
                     cw_mesaj   = cw["mesaj"]
-                    kbg = kbg_hesapla(kyg, ray_taban, cw_yandan=True)
+                    kbg_max = kbg_hesapla(kyg, ray_taban, cw_yandan=True)
+                    kullanilabilir_w = kyg - CW_B_MESAFE
                 else:
                     ray_x_sag = kyg - RAY_DUVAR_BOSLUGU - ray_taban / 2
                     cw_ust = cw_alt = None
                     cw_senaryo = "—"
                     cw_mesaj   = "Arkadan CW"
-                    kbg = kbg_hesapla(kyg, ray_taban, cw_yandan=False)
+                    kbg_max = kbg_hesapla(kyg, ray_taban, cw_yandan=False)
+                    kullanilabilir_w = kyg
 
-                if kbg <= 200:  # minimum kabin genişliği
+                if kbg_max <= 200:  # minimum kabin genişliği
                     continue
 
-                sonuclar.append({
-                    "cw_konum":   cw_konum,
-                    "mek":        mek_adi,
-                    "hiz":        hiz,
-                    "ray_isim":   ray["isim"],
-                    "ray_taban":  ray_taban,
-                    "kbg":        round(kbg),
-                    "kbd":        round(kbd),
-                    "ray_x_sol":  ray_x_sol,
-                    "ray_x_sag":  ray_x_sag,
-                    "ray_y":      ray_y,
-                    "cw_ust":     cw_ust,
-                    "cw_alt":     cw_alt,
-                    "cw_senaryo": cw_senaryo,
-                    "cw_mesaj":   cw_mesaj,
-                    "on_bosluk":  on_bosluk,
-                })
+                # Kapı (LL) ve Mekanizma Genişliği (TMG) Hesabı
+                max_ll = kbg_max - 200
+                
+                # Standart adımlara göre kapı seçimi
+                if "3 panel" in mek_adi or "4 panel" in mek_adi:
+                    uygun_ll_listesi = [ll for ll in [800, 900, 1000, 1100, 1200] if ll <= max_ll]
+                else:
+                    uygun_ll_listesi = [ll for ll in [700, 800, 900, 1000, 1100, 1200] if ll <= max_ll]
+                
+                if not uygun_ll_listesi:
+                    continue  # Bu kuyuya standart bir kapı sığmıyor
+                    
+                for secilen_ll in uygun_ll_listesi:
+                    kbg_yeni = secilen_ll + 200
+                    
+                    # TMG (Toplam Mekanizma Genişliği) formülleri
+                    if mek_adi == "Merkezi 2 panel": tmg = (2.0 * secilen_ll) + 50
+                    elif mek_adi == "Merkezi 4 panel": tmg = (1.5 * secilen_ll) + 50
+                    elif mek_adi == "Teleskopik 2 panel": tmg = (1.5 * secilen_ll) + 100
+                    elif mek_adi == "Teleskopik 3 panel": tmg = (1.33 * secilen_ll) + 100
+                    elif mek_adi == "Teleskopik 4 panel": tmg = (1.25 * secilen_ll) + 100
+                    else: tmg = (2.0 * secilen_ll) + 50
+                    
+                    # TMG kuyuya sığıyor mu? (50 mm çalışma toleransı ile)
+                    if tmg + 50 > kullanilabilir_w:
+                        continue
+
+                    sonuclar.append({
+                        "cw_konum":   cw_konum,
+                        "mek":        mek_adi,
+                        "hiz":        hiz,
+                        "ray_isim":   ray["isim"],
+                        "ray_taban":  ray_taban,
+                        "kbg":        round(kbg_yeni),
+                        "kbd":        round(kbd),
+                        "ray_x_sol":  ray_x_sol,
+                        "ray_x_sag":  ray_x_sag,
+                        "ray_y":      ray_y,
+                        "cw_ust":     cw_ust,
+                        "cw_alt":     cw_alt,
+                        "cw_senaryo": cw_senaryo,
+                        "cw_mesaj":   cw_mesaj,
+                        "on_bosluk":  on_bosluk,
+                        "ll":         secilen_ll,
+                        "tmg":        round(tmg),
+                    })
 
     return sonuclar
 
@@ -397,7 +430,96 @@ def svg_ciz(r, kyg, kyd, uid="0"):
 <text x="{MARGIN-4:.1f}" y="{MARGIN+16:.1f}" font-size="9" fill="#94A3B8"
       transform="rotate(-90,{MARGIN-4:.1f},{MARGIN+16:.1f})">y ↓</text>
 </svg>"""
-    return svg
+
+    # Tam HTML sarmalayıcı — st.components.v1.html() ile render için
+    html = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><style>
+  body {{ margin:0; padding:8px; background:transparent; display:flex; justify-content:center; }}
+  svg  {{ max-width:100%; height:auto; }}
+</style></head>
+<body>{svg}</body>
+</html>"""
+    return html, SVG_H
+
+def kapi_mekanizmasi_svg(mek_adi, kbg, ll, tmg):
+    """
+    Kabin genişliğine (kbg) orantılı olarak, şematik kapı mekanizması çizer.
+    Sadece kapalı durumdaki panelleri gösterir.
+    """
+    SVG_W = 640
+    SVG_H = 180
+    MARGIN = 20
+    
+    olcek = (SVG_W - 2 * MARGIN) / kbg
+    def px(mm): return mm * olcek
+    
+    # Kasa
+    kabin_w_px = px(kbg)
+    kabin_x = MARGIN + (SVG_W - 2*MARGIN - kabin_w_px)/2
+    kasa_w_px = px(tmg)
+    kasa_x = kabin_x + (kabin_w_px - kasa_w_px)/2
+    
+    svg_kasa = f"""
+    <!-- Kasa / Kılavuz -->
+    <rect x="{kasa_x:.1f}" y="40" width="{kasa_w_px:.1f}" height="70" fill="#F8FAFC" stroke="#94A3B8" stroke-width="1.5"/>
+    <line x1="{kasa_x:.1f}" y1="75" x2="{kasa_x + kasa_w_px:.1f}" y2="75" stroke="#CBD5E1" stroke-width="1" stroke-dasharray="4 2"/>
+    <text x="{SVG_W/2:.1f}" y="20" text-anchor="middle" font-size="14" font-weight="bold" fill="#1E293B">{mek_adi} (LL: {ll} mm, TMG: {tmg} mm)</text>
+    <text x="{SVG_W/2:.1f}" y="135" text-anchor="middle" font-size="12" fill="#64748B">Kabin Genişliği (KbG): {kbg} mm</text>
+    """
+    
+    panel_svg = ""
+    panel_y = 48
+    panel_h = 10
+    panel_bosluk = 4
+    
+    merkez_x = SVG_W / 2
+    giris_w_px = px(ll)
+    
+    if mek_adi == "Merkezi 2 panel":
+        p_w = giris_w_px / 2 + 5
+        panel_svg += f'<rect x="{merkez_x - p_w:.1f}" y="{panel_y:.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
+        panel_svg += f'<rect x="{merkez_x:.1f}" y="{panel_y:.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
+    
+    elif mek_adi == "Merkezi 4 panel":
+        p_w = giris_w_px / 4 + 5
+        panel_svg += f'<rect x="{merkez_x - p_w:.1f}" y="{panel_y:.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
+        panel_svg += f'<rect x="{merkez_x:.1f}" y="{panel_y:.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
+        panel_svg += f'<rect x="{merkez_x - 2*p_w + 2:.1f}" y="{panel_y + panel_h + panel_bosluk:.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
+        panel_svg += f'<rect x="{merkez_x + p_w - 2:.1f}" y="{panel_y + panel_h + panel_bosluk:.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
+        
+    elif mek_adi == "Teleskopik 2 panel":
+        p_w = giris_w_px / 2 + 5
+        sol_baslangic = merkez_x - giris_w_px / 2
+        panel_svg += f'<rect x="{sol_baslangic:.1f}" y="{panel_y:.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
+        panel_svg += f'<rect x="{sol_baslangic + p_w - 2:.1f}" y="{panel_y + panel_h + panel_bosluk:.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
+
+    elif mek_adi == "Teleskopik 3 panel":
+        p_w = giris_w_px / 3 + 5
+        sol_baslangic = merkez_x - giris_w_px / 2
+        for i in range(3):
+            panel_svg += f'<rect x="{sol_baslangic + i*(p_w-2):.1f}" y="{panel_y + i*(panel_h + panel_bosluk):.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
+
+    elif mek_adi == "Teleskopik 4 panel":
+        p_w = giris_w_px / 4 + 5
+        sol_baslangic = merkez_x - giris_w_px / 2
+        for i in range(4):
+            panel_svg += f'<rect x="{sol_baslangic + i*(p_w-2):.1f}" y="{panel_y + i*(panel_h + panel_bosluk):.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
+
+    html = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><style>
+  body {{ margin:0; padding:0; background:transparent; display:flex; justify-content:center; }}
+  svg  {{ max-width:100%; height:auto; }}
+</style></head>
+<body>
+<svg width="{SVG_W}" height="{SVG_H}" viewBox="0 0 {SVG_W} {SVG_H}" xmlns="http://www.w3.org/2000/svg">
+{svg_kasa}
+{panel_svg}
+</svg>
+</body>
+</html>"""
+    return html, SVG_H
 
 # ─────────────────────────────────────────────────────────────────
 #  STREAMLIT ARAYÜZÜ
@@ -484,6 +606,7 @@ for tab, sistem in zip(tabs, uygun):
                 "#":           i+1,
                 "CW Konum":    r["cw_konum"],
                 "Mekanizma":   r["mek"],
+                "Kapı (LL)":   f"{r['ll']} mm",
                 "Hız (m/s)":   r["hiz"],
                 "Ana Ray":     r["ray_isim"],
                 "KbG (mm)":    r["kbg"],
@@ -497,7 +620,7 @@ for tab, sistem in zip(tabs, uygun):
         st.markdown("#### 📐 Üstten Görünüş Çizimi")
 
         secenekler = [
-            f"#{i+1} | {r['cw_konum']} CW | {r['mek']} | {r['hiz']} m/s | "
+            f"#{i+1} | {r['cw_konum']} CW | {r['mek']} | Kapı LL={r['ll']}mm | {r['hiz']} m/s | "
             f"KbG={r['kbg']}mm KbD={r['kbd']}mm"
             for i, r in enumerate(kombinasyonlar)
         ]
@@ -520,13 +643,18 @@ for tab, sistem in zip(tabs, uygun):
 
         # SVG çizim — uid ile clipPath çakışmasını önle
         uid = f"{sistem['id']}_{secim_idx}"
-        svg_kodu = svg_ciz(r, kyg, kyd, uid=uid)
-        st.markdown(svg_kodu, unsafe_allow_html=True)
+        svg_html, svg_h = svg_ciz(r, kyg, kyd, uid=uid)
+        components.html(svg_html, height=svg_h + 80, scrolling=False)
+
+        # Kapı mekanizması SVG'sini çizdir
+        st.markdown("#### 🚪 Kapı Mekanizması — Üstten Görünüş")
+        kapi_html, kapi_h = kapi_mekanizmasi_svg(r["mek"], r["kbg"], r["ll"], r["tmg"])
+        components.html(kapi_html, height=kapi_h + 80, scrolling=False)
 
         # Özet kutucuklar
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Kabin Genişliği (KbG)", f"{r['kbg']} mm")
-        col2.metric("Kabin Derinliği (KbD)", f"{r['kbd']} mm")
+        col2.metric("Net Kapı (LL)", f"{r['ll']} mm")
         col3.metric("Ana Ray", r["ray_isim"])
         col4.metric("Hız", f"{r['hiz']} m/s")
 
