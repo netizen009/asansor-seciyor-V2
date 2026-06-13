@@ -140,19 +140,14 @@ def cw_yandan_karar(kyg, kyd, on_bosluk, ray_taban):
                 "ray_x_sag": ray_x_sag,
                 "mesaj": f"Ray ana ağırlıkla çakışıyor → ray {UZAK_MONTE_MESAFE}mm uzak monte"}
     else:
-        ray_x_sag = kyg - RAY_DUVAR_BOSLUGU - ray_taban / 2
+        ray_x_sag = kyg - CW_B_MESAFE - ray_taban / 2
         return {"gecerli": True, "senaryo": "cakismiyor",
                 "cw_ust": cw_ust_k, "cw_alt": cw_alt_k,
                 "ray_x_sag": ray_x_sag,
                 "mesaj": "Ray çakışmıyor → standart konumda"}
 
-def kbg_hesapla(kyg, ray_taban, cw_yandan):
-    a_sol = RAY_DUVAR_BOSLUGU + ray_taban + YATAKLAMA_TOPLAM / 2
-    if cw_yandan:
-        return kyg - a_sol - CW_B_MESAFE
-    else:
-        a_sag = RAY_DUVAR_BOSLUGU + ray_taban + YATAKLAMA_TOPLAM / 2
-        return kyg - a_sol - a_sag
+def kbg_hesapla(ray_x_sol, ray_x_sag, ray_taban):
+    return ray_x_sag - ray_x_sol - ray_taban - YATAKLAMA_TOPLAM
 
 def tum_kombinasyonlari_hesapla(kyg, kyd, kapasite, sistem):
     """
@@ -190,14 +185,14 @@ def tum_kombinasyonlari_hesapla(kyg, kyd, kapasite, sistem):
                     cw_alt    = cw["cw_alt"]
                     cw_senaryo = cw["senaryo"]
                     cw_mesaj   = cw["mesaj"]
-                    kbg_max = kbg_hesapla(kyg, ray_taban, cw_yandan=True)
-                    kullanilabilir_w = kyg - CW_B_MESAFE
+                    kbg_max = kbg_hesapla(ray_x_sol, ray_x_sag, ray_taban)
+                    kullanilabilir_w = ray_x_sag + ray_taban / 2
                 else:
                     ray_x_sag = kyg - RAY_DUVAR_BOSLUGU - ray_taban / 2
                     cw_ust = cw_alt = None
                     cw_senaryo = "—"
                     cw_mesaj   = "Arkadan CW"
-                    kbg_max = kbg_hesapla(kyg, ray_taban, cw_yandan=False)
+                    kbg_max = kbg_hesapla(ray_x_sol, ray_x_sag, ray_taban)
                     kullanilabilir_w = kyg
 
                 if kbg_max <= 200:  # minimum kabin genişliği
@@ -266,9 +261,9 @@ def tum_kombinasyonlari_hesapla(kyg, kyd, kapasite, sistem):
 def svg_ciz(r, kyg, kyd, uid="0"):
     """r: tek bir kombinasyon dict'i, uid: unique id (clipPath çakışmasını önler)"""
     clip_id = f"cb_{uid}"
-    SVG_W   = 640
+    SVG_W   = 760
     MARGIN  = 55
-    ETIKET  = 60
+    ETIKET  = 120
 
     olcek = min(
         (SVG_W - MARGIN - ETIKET) / kyg,
@@ -284,7 +279,7 @@ def svg_ciz(r, kyg, kyd, uid="0"):
     SVG_H = int(kh + MARGIN * 2 + 40)
 
     # Kabin kenarları (mm cinsinden)
-    kabin_sol  = r["ray_x_sol"] - r["ray_taban"]/2 - YATAKLAMA_TOPLAM/2
+    kabin_sol  = r["ray_x_sol"] + r["ray_taban"]/2 + YATAKLAMA_TOPLAM/2
     kabin_ust  = r["on_bosluk"]
     kabin_sag  = kabin_sol + r["kbg"]
     kabin_alt  = kabin_ust + r["kbd"]
