@@ -245,18 +245,28 @@ def svg_ciz(r, kyg, kyd, uid="0"):
     SVG_H = int(kh + MARGIN * 2 + 40)
 
     # Kabin kenarları (mm cinsinden)
-    kabin_sol  = r["ray_x_sol"] - r["ray_taban"]/2 - YATAKLAMA_TOPLAM/2
-    kabin_ust  = r["on_bosluk"]
-    kabin_sag  = kabin_sol + r["kbg"]
-    kabin_alt  = kabin_ust + r["kbd"]
+    if r["cw_konum"] == "Arkadan":
+        kullanilabilir_alan = kyg
+        offset = 0
+    else:
+        kullanilabilir_alan = kyg - CW_B_MESAFE
+        offset = 0
+        
+    kabin_sol = offset + (kullanilabilir_alan - r["kbg"]) / 2
+    kabin_ust = r["on_bosluk"]
+    kabin_sag = kabin_sol + r["kbg"]
+    kabin_alt = kabin_ust + r["kbd"]
 
     kbx1 = sx(kabin_sol);  kby1 = sy(kabin_ust)
     kbx2 = sx(kabin_sag);  kby2 = sy(kabin_alt)
     kbw  = kbx2 - kbx1;    kbh  = kby2 - kby1
 
-    # Ray px
-    rsx  = sx(r["ray_x_sol"]); rsy  = sy(r["ray_y"])
-    rdx  = sx(r["ray_x_sag"]); rdy  = sy(r["ray_y"])
+    # Ray px (görselde kabine göre yeniden konumlandırma)
+    ray_x_sol_gorsel = kabin_sol + YATAKLAMA_TOPLAM/2 + r["ray_taban"]/2
+    ray_x_sag_gorsel = kabin_sag - YATAKLAMA_TOPLAM/2 - r["ray_taban"]/2
+    
+    rsx  = sx(ray_x_sol_gorsel); rsy  = sy(r["ray_y"])
+    rdx  = sx(ray_x_sag_gorsel); rdy  = sy(r["ray_y"])
     rr   = max(5, px(15))
 
     # CW
@@ -274,8 +284,11 @@ def svg_ciz(r, kyg, kyd, uid="0"):
   <line x1="{cw_cx:.1f}" y1="{cy1:.1f}" x2="{cw_cx:.1f}" y2="{cy2:.1f}"
         stroke="#DC2626" stroke-width="0.5" stroke-dasharray="3 2"/>"""
     elif r["cw_konum"] == "Arkadan":
-        cx1 = sx(kabin_sol); cx2 = sx(kabin_sag)
-        cy1 = sy(kyd - ARKADAN_CW_PAYI); cy2 = sy(kyd)
+        # Arkadan CW: genişlik 1380 mm (CW_Y_BOYU), derinlik 150 mm (CW_X_BOYU)
+        cw_w = CW_Y_BOYU
+        cw_h = CW_X_BOYU
+        cx1 = sx(kyg/2 - cw_w/2); cx2 = sx(kyg/2 + cw_w/2)
+        cy1 = sy(kyd - ARKADAN_CW_PAYI + (ARKADAN_CW_PAYI - cw_h)/2); cy2 = cy1 + px(cw_h)
         cw_cx=(cx1+cx2)/2; cw_cy=(cy1+cy2)/2
         cw_svg = f"""
   <rect x="{cx1:.1f}" y="{cy1:.1f}" width="{cx2-cx1:.1f}" height="{cy2-cy1:.1f}"
@@ -410,6 +423,103 @@ def svg_ciz(r, kyg, kyd, uid="0"):
 </html>"""
     return html, SVG_H
 
+def kapi_mekanizmasi_svg(mek_adi, kbg):
+    """
+    Kabin genişliğine (kbg) orantılı olarak, şematik kapı mekanizması çizer.
+    Sadece kapalı durumdaki panelleri gösterir.
+    """
+    SVG_W = 640
+    SVG_H = 180
+    MARGIN = 20
+    
+    # Orantı: kbg'yi çizime sığdır
+    olcek = (SVG_W - 2 * MARGIN) / kbg
+    def px(mm): return mm * olcek
+    
+    # Kapı genişliği: kabin genişliğinin belli bir oranı (örn %55-65, ama şematik olduğu için basit)
+    if "Merkezi" in mek_adi:
+        kapi_oran = 0.60
+    else:
+        kapi_oran = 0.50
+        
+    net_giris = kbg * kapi_oran
+    
+    # Kasa
+    kasa_w = px(kbg)
+    kasa_x = MARGIN
+    
+    # Ortak çizim parçaları
+    svg_kasa = f"""
+    <!-- Kasa / Kılavuz -->
+    <rect x="{kasa_x:.1f}" y="40" width="{kasa_w:.1f}" height="70" fill="#F8FAFC" stroke="#94A3B8" stroke-width="1.5"/>
+    <line x1="{kasa_x:.1f}" y1="75" x2="{kasa_x + kasa_w:.1f}" y2="75" stroke="#CBD5E1" stroke-width="1" stroke-dasharray="4 2"/>
+    <text x="{kasa_x + kasa_w/2:.1f}" y="20" text-anchor="middle" font-size="14" font-weight="bold" fill="#1E293B">{mek_adi}</text>
+    <text x="{kasa_x + kasa_w/2:.1f}" y="135" text-anchor="middle" font-size="12" fill="#64748B">Kabin Genişliği: {kbg} mm</text>
+    """
+    
+    panel_svg = ""
+    panel_y = 48
+    panel_h = 10
+    panel_bosluk = 4
+    
+    merkez_x = kasa_x + kasa_w / 2
+    giris_w_px = px(net_giris)
+    
+    if mek_adi == "Merkezi 2 panel":
+        # İki panel ortadan iki yana
+        p_w = giris_w_px / 2 + 5
+        # Sol panel
+        panel_svg += f'<rect x="{merkez_x - p_w:.1f}" y="{panel_y:.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
+        # Sağ panel
+        panel_svg += f'<rect x="{merkez_x:.1f}" y="{panel_y:.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
+    
+    elif mek_adi == "Merkezi 4 panel":
+        # 4 panel
+        p_w = giris_w_px / 4 + 5
+        # İç Sol
+        panel_svg += f'<rect x="{merkez_x - p_w:.1f}" y="{panel_y:.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
+        # İç Sağ
+        panel_svg += f'<rect x="{merkez_x:.1f}" y="{panel_y:.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
+        # Dış Sol
+        panel_svg += f'<rect x="{merkez_x - 2*p_w + 2:.1f}" y="{panel_y + panel_h + panel_bosluk:.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
+        # Dış Sağ
+        panel_svg += f'<rect x="{merkez_x + p_w - 2:.1f}" y="{panel_y + panel_h + panel_bosluk:.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
+        
+    elif mek_adi == "Teleskopik 2 panel":
+        p_w = giris_w_px / 2 + 5
+        sol_baslangic = merkez_x - giris_w_px / 2
+        # Panel 1
+        panel_svg += f'<rect x="{sol_baslangic:.1f}" y="{panel_y:.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
+        # Panel 2
+        panel_svg += f'<rect x="{sol_baslangic + p_w - 2:.1f}" y="{panel_y + panel_h + panel_bosluk:.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
+
+    elif mek_adi == "Teleskopik 3 panel":
+        p_w = giris_w_px / 3 + 5
+        sol_baslangic = merkez_x - giris_w_px / 2
+        for i in range(3):
+            panel_svg += f'<rect x="{sol_baslangic + i*(p_w-2):.1f}" y="{panel_y + i*(panel_h + panel_bosluk):.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
+
+    elif mek_adi == "Teleskopik 4 panel":
+        p_w = giris_w_px / 4 + 5
+        sol_baslangic = merkez_x - giris_w_px / 2
+        for i in range(4):
+            panel_svg += f'<rect x="{sol_baslangic + i*(p_w-2):.1f}" y="{panel_y + i*(panel_h + panel_bosluk):.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
+
+    html = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><style>
+  body {{ margin:0; padding:0; background:transparent; display:flex; justify-content:center; }}
+  svg  {{ max-width:100%; height:auto; }}
+</style></head>
+<body>
+<svg width="{SVG_W}" height="{SVG_H}" viewBox="0 0 {SVG_W} {SVG_H}" xmlns="http://www.w3.org/2000/svg">
+{svg_kasa}
+{panel_svg}
+</svg>
+</body>
+</html>"""
+    return html, SVG_H
+
 # ─────────────────────────────────────────────────────────────────
 #  STREAMLIT ARAYÜZÜ
 # ─────────────────────────────────────────────────────────────────
@@ -533,6 +643,11 @@ for tab, sistem in zip(tabs, uygun):
         uid = f"{sistem['id']}_{secim_idx}"
         svg_html, svg_h = svg_ciz(r, kyg, kyd, uid=uid)
         components.html(svg_html, height=svg_h + 30, scrolling=False)
+
+        # Kapı mekanizması SVG'sini çizdir
+        st.markdown("#### 🚪 Kapı Mekanizması — Üstten Görünüş")
+        kapi_html, kapi_h = kapi_mekanizmasi_svg(r["mek"], r["kbg"])
+        components.html(kapi_html, height=kapi_h + 30, scrolling=False)
 
         # Özet kutucuklar
         col1, col2, col3, col4 = st.columns(4)
