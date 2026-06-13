@@ -216,7 +216,7 @@ def tum_kombinasyonlari_hesapla(kyg, kyd, kapasite, sistem):
                     continue  # Bu kuyuya standart bir kapı sığmıyor
                     
                 for secilen_ll in uygun_ll_listesi:
-                    kbg_yeni = secilen_ll + 200
+                    kbg_son = kbg_max
                     
                     # TMG (Toplam Mekanizma Genişliği) formülleri
                     if mek_adi == "Merkezi 2 panel": tmg = (2.0 * secilen_ll) + 50
@@ -236,7 +236,7 @@ def tum_kombinasyonlari_hesapla(kyg, kyd, kapasite, sistem):
                         "hiz":        hiz,
                         "ray_isim":   ray["isim"],
                         "ray_taban":  ray_taban,
-                        "kbg":        round(kbg_yeni),
+                        "kbg":        round(kbg_son),
                         "kbd":        round(kbd),
                         "ray_x_sol":  ray_x_sol,
                         "ray_x_sag":  ray_x_sag,
@@ -306,8 +306,11 @@ def svg_ciz(r, kyg, kyd, uid="0"):
   <line x1="{cw_cx:.1f}" y1="{cy1:.1f}" x2="{cw_cx:.1f}" y2="{cy2:.1f}"
         stroke="#DC2626" stroke-width="0.5" stroke-dasharray="3 2"/>"""
     elif r["cw_konum"] == "Arkadan":
-        cx1 = sx(kabin_sol); cx2 = sx(kabin_sag)
-        cy1 = sy(kyd - ARKADAN_CW_PAYI); cy2 = sy(kyd)
+        # Arkadan CW: genişlik 1380 mm (CW_Y_BOYU), derinlik 150 mm (CW_X_BOYU)
+        cw_w = CW_Y_BOYU
+        cw_h = CW_X_BOYU
+        cx1 = sx(kyg/2 - cw_w/2); cx2 = sx(kyg/2 + cw_w/2)
+        cy1 = sy(kyd - ARKADAN_CW_PAYI + (ARKADAN_CW_PAYI - cw_h)/2); cy2 = cy1 + px(cw_h)
         cw_cx=(cx1+cx2)/2; cw_cy=(cy1+cy2)/2
         cw_svg = f"""
   <rect x="{cx1:.1f}" y="{cy1:.1f}" width="{cx2-cx1:.1f}" height="{cy2-cy1:.1f}"
@@ -431,16 +434,8 @@ def svg_ciz(r, kyg, kyd, uid="0"):
       transform="rotate(-90,{MARGIN-4:.1f},{MARGIN+16:.1f})">y ↓</text>
 </svg>"""
 
-    # Tam HTML sarmalayıcı — st.components.v1.html() ile render için
-    html = f"""<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><style>
-  body {{ margin:0; padding:8px; background:transparent; display:flex; justify-content:center; }}
-  svg  {{ max-width:100%; height:auto; }}
-</style></head>
-<body>{svg}</body>
-</html>"""
-    return html, SVG_H
+    # st.markdown ile render için doğrudan svg string'i dönüyoruz
+    return svg, SVG_H
 
 def kapi_mekanizmasi_svg(mek_adi, kbg, ll, tmg):
     """
@@ -506,20 +501,11 @@ def kapi_mekanizmasi_svg(mek_adi, kbg, ll, tmg):
         for i in range(4):
             panel_svg += f'<rect x="{sol_baslangic + i*(p_w-2):.1f}" y="{panel_y + i*(panel_h + panel_bosluk):.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
 
-    html = f"""<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><style>
-  body {{ margin:0; padding:0; background:transparent; display:flex; justify-content:center; }}
-  svg  {{ max-width:100%; height:auto; }}
-</style></head>
-<body>
-<svg width="{SVG_W}" height="{SVG_H}" viewBox="0 0 {SVG_W} {SVG_H}" xmlns="http://www.w3.org/2000/svg">
+    svg_html = f"""<svg width="100%" viewBox="0 0 {SVG_W} {SVG_H}" xmlns="http://www.w3.org/2000/svg">
 {svg_kasa}
 {panel_svg}
-</svg>
-</body>
-</html>"""
-    return html, SVG_H
+</svg>"""
+    return svg_html, SVG_H
 
 # ─────────────────────────────────────────────────────────────────
 #  STREAMLIT ARAYÜZÜ
@@ -644,12 +630,12 @@ for tab, sistem in zip(tabs, uygun):
         # SVG çizim — uid ile clipPath çakışmasını önle
         uid = f"{sistem['id']}_{secim_idx}"
         svg_html, svg_h = svg_ciz(r, kyg, kyd, uid=uid)
-        components.html(svg_html, height=svg_h + 80, scrolling=False)
+        st.markdown(svg_html, unsafe_allow_html=True)
 
         # Kapı mekanizması SVG'sini çizdir
         st.markdown("#### 🚪 Kapı Mekanizması — Üstten Görünüş")
         kapi_html, kapi_h = kapi_mekanizmasi_svg(r["mek"], r["kbg"], r["ll"], r["tmg"])
-        components.html(kapi_html, height=kapi_h + 80, scrolling=False)
+        st.markdown(kapi_html, unsafe_allow_html=True)
 
         # Özet kutucuklar
         col1, col2, col3, col4 = st.columns(4)
