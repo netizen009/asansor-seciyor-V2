@@ -7,10 +7,10 @@ st.set_page_config(page_title="Asansör Sistem Seçici v2", page_icon="🛗", la
 #  SABİT DEĞERLER
 # ─────────────────────────────────────────────────────────────────
 KAT_YUKSEKLIGI     = 3000
-YATAKLAMA_TOPLAM   = 150
+YATAKLAMA_TOPLAM   = 200
 RAY_DUVAR_BOSLUGU  = 100
 KABIN_ARKA_BOSLUGU = 50
-ARKADAN_CW_PAYI    = 300
+ARKADAN_CW_PAYI    = 320
 CW_Y_BOYU          = 1380
 CW_X_BOYU          = 150
 CW_DUVAR_BOSLUGU   = 50
