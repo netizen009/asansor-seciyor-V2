@@ -1,830 +1,671 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Asansör Sistem Seçici
-=====================
-Kuyu koşulları ve teknik gereksinimlere göre
-uygun asansör konfigürasyonlarını öneren interaktif program.
-"""
+import streamlit as st
+import streamlit.components.v1 as components
 
-import sys
-import os
-from colorama import init, Fore, Style, Back
+st.set_page_config(page_title="Asansör Sistem Seçici v2", page_icon="🛗", layout="wide")
 
-init(autoreset=True)
+# ─────────────────────────────────────────────────────────────────
+#  SABİT DEĞERLER
+# ─────────────────────────────────────────────────────────────────
+KAT_YUKSEKLIGI     = 3000
+YATAKLAMA_TOPLAM   = 150
+RAY_DUVAR_BOSLUGU  = 100
+KABIN_ARKA_BOSLUGU = 50
+ARKADAN_CW_PAYI    = 300
+CW_Y_BOYU          = 1380
+CW_X_BOYU          = 150
+CW_DUVAR_BOSLUGU   = 50
+CW_CALISMA_BOSLUGU = 75
+CW_B_MESAFE        = 300   # 50+150+100
+UZAK_MONTE_MESAFE  = 310
 
-# ─────────────────────────────────────────────
-#  RENK KISAYOLLARI
-# ─────────────────────────────────────────────
-C  = Fore.CYAN
-G  = Fore.GREEN
-Y  = Fore.YELLOW
-R  = Fore.RED
-M  = Fore.MAGENTA
-W  = Fore.WHITE
-B  = Style.BRIGHT
-D  = Style.DIM
-RS = Style.RESET_ALL
+# ─────────────────────────────────────────────────────────────────
+#  TABLOLAR
+# ─────────────────────────────────────────────────────────────────
+MEKANIZMA = {
+    "Merkezi 2 panel":    {"on": 240},
+    "Merkezi 4 panel":    {"on": 330},
+    "Teleskopik 2 panel": {"on": 310},
+    "Teleskopik 3 panel": {"on": 400},
+    "Teleskopik 4 panel": {"on": 490},
+}
 
-# ─────────────────────────────────────────────
-#  ASANSÖr VERİTABANI
-#  Her giriş: {id, ad, kisa_ad, parametreler, avantajlar, dezavantajlar, tipik_kullanim}
-# ─────────────────────────────────────────────
-ASANSOR_DB = [
-    {
-        "id": "MR_GR_11_UP",
-        "ad": "Makine Daireli · Dişlili · 1:1 · Üstten Palanga",
-        "kisa": "MR Dişlili 1:1",
-        "hiz_max": 2.5,
-        "kapasite_max": 2000,
-        "kapasite_min": 200,
-        "kat_max": 20,
-        "mr": True,
-        "mrl": False,
-        "disli": True,
-        "dishisiz": False,
-        "oran_11": True,
-        "oran_21": False,
-        "ustten": True,
-        "alttan": False,
-        "cw_yan": True,
-        "cw_arka": True,
-        "pit_min": 1200,     # mm - kuyu dibi boşluğu
-        "overhead_min": 3600, # mm - kuyu üst boşluk
-        "mrdairesi": True,
-        "avantajlar": [
-            "Düşük ilk maliyet",
-            "Yaygın yedek parça bulunabilirliği",
-            "Basit mekanik yapı",
-            "Geniş kapasite aralığı",
-        ],
-        "dezavantajlar": [
-            "Makine dairesi gerektirir (+15–25 m²)",
-            "Yağ ve bakım yoğun",
-            "Düşük enerji verimliliği",
-            "Hız sınırlı (≤2,5 m/s)",
-        ],
-        "tipik": "Orta katlı konut, alışveriş merkezi, hastane (orta trafik)",
-    },
-    {
-        "id": "MR_GR_21_UP",
-        "ad": "Makine Daireli · Dişlili · 2:1 · Üstten Palanga",
-        "kisa": "MR Dişlili 2:1",
-        "hiz_max": 1.6,
-        "kapasite_max": 5000,
-        "kapasite_min": 500,
-        "kat_max": 15,
-        "mr": True,
-        "mrl": False,
-        "disli": True,
-        "dishisiz": False,
-        "oran_11": False,
-        "oran_21": True,
-        "ustten": True,
-        "alttan": False,
-        "cw_yan": True,
-        "cw_arka": True,
-        "pit_min": 1400,
-        "overhead_min": 4200,
-        "mrdairesi": True,
-        "avantajlar": [
-            "Yüksek yük kapasitesi (≤5.000 kg)",
-            "Daha küçük motor gücü yeterli",
-            "Endüstriyel/kargo uygulamaları için ideal",
-        ],
-        "dezavantajlar": [
-            "Makine dairesi gerektirir",
-            "Daha yüksek overhead boşluğu",
-            "Karmaşık halat düzeni",
-            "Hız düşük (≤1,6 m/s)",
-        ],
-        "tipik": "Yük asansörü, büyük alışveriş merkezi servis asansörü, hastane yatak asansörü",
-    },
-    {
-        "id": "MR_GL_11_UP",
-        "ad": "Makine Daireli · Dişlisiz · 1:1 · Üstten Palanga",
-        "kisa": "MR Dişlisiz 1:1",
-        "hiz_max": 10.0,
-        "kapasite_max": 2500,
-        "kapasite_min": 400,
-        "kat_max": 100,
-        "mr": True,
-        "mrl": False,
-        "disli": False,
-        "dishisiz": True,
-        "oran_11": True,
-        "oran_21": False,
-        "ustten": True,
-        "alttan": False,
-        "cw_yan": True,
-        "cw_arka": True,
-        "pit_min": 1500,
-        "overhead_min": 4000,
-        "mrdairesi": True,
-        "avantajlar": [
-            "Çok yüksek hız (≤10 m/s)",
-            "Düşük bakım",
-            "Uzun ömür",
-            "Yüksek bina uygulamaları",
-            "Sessiz ve konforlu",
-        ],
-        "dezavantajlar": [
-            "Makine dairesi gerektirir",
-            "Yüksek ilk maliyet",
-            "Özel kontrol sistemi",
-        ],
-        "tipik": "Yüksek/çok katlı ofis kuleleri, oteller, rezidanslar",
-    },
-    {
-        "id": "MRL_GL_11_UP",
-        "ad": "Makine Dairesiz · Dişlisiz · 1:1 · Üstten Palanga",
-        "kisa": "MRL Dişlisiz 1:1",
-        "hiz_max": 4.0,
-        "kapasite_max": 2000,
-        "kapasite_min": 200,
-        "kat_max": 40,
-        "mr": False,
-        "mrl": True,
-        "disli": False,
-        "dishisiz": True,
-        "oran_11": True,
-        "oran_21": False,
-        "ustten": True,
-        "alttan": False,
-        "cw_yan": True,
-        "cw_arka": True,
-        "pit_min": 1100,
-        "overhead_min": 3500,
-        "mrdairesi": False,
-        "avantajlar": [
-            "Makine dairesi gerekmez → bina alanı tasarrufu",
-            "Enerji verimli (VF sürücü)",
-            "Modern estetik",
-            "Düşük işletme maliyeti",
-            "Geniş kapasite aralığı",
-        ],
-        "dezavantajlar": [
-            "Kuyu başı yeterli olmalı (≥3.500 mm)",
-            "Motor kuyu içinde → bakım erişimi daha zor",
-            "Isı yönetimi önemli",
-        ],
-        "tipik": "Konut, ofis, AVM, hastane — modern binaların büyük çoğunluğu",
-    },
-    {
-        "id": "MRL_GL_21_UP",
-        "ad": "Makine Dairesiz · Dişlisiz · 2:1 · Üstten Palanga",
-        "kisa": "MRL Dişlisiz 2:1",
-        "hiz_max": 2.0,
-        "kapasite_max": 3500,
-        "kapasite_min": 400,
-        "kat_max": 20,
-        "mr": False,
-        "mrl": True,
-        "disli": False,
-        "dishisiz": True,
-        "oran_11": False,
-        "oran_21": True,
-        "ustten": True,
-        "alttan": False,
-        "cw_yan": True,
-        "cw_arka": True,
-        "pit_min": 1200,
-        "overhead_min": 3800,
-        "mrdairesi": False,
-        "avantajlar": [
-            "Makine dairesi gerekmez",
-            "Yüksek yük + enerji verimliliği",
-            "Daha küçük motor",
-        ],
-        "dezavantajlar": [
-            "Daha fazla kasnak ve halat",
-            "Kuyu üst yüksekliği kritik",
-        ],
-        "tipik": "Orta-yüksek kapasiteli konut ve ticari, hastane servis asansörleri",
-    },
-    {
-        "id": "MRL_GL_11_BACK",
-        "ad": "Makine Dairesiz · Dişlisiz · 1:1 · Alttan Palanga (Backpack)",
-        "kisa": "MRL Backpack 1:1",
-        "hiz_max": 2.5,
-        "kapasite_max": 1600,
-        "kapasite_min": 200,
-        "kat_max": 20,
-        "mr": False,
-        "mrl": True,
-        "disli": False,
-        "dishisiz": True,
-        "oran_11": True,
-        "oran_21": False,
-        "ustten": False,
-        "alttan": True,
-        "cw_yan": False,
-        "cw_arka": True,
-        "pit_min": 1200,
-        "overhead_min": 2800,
-        "mrdairesi": False,
-        "avantajlar": [
-            "Çok düşük kuyu üst yüksekliği (≥2.800 mm)",
-            "Dar kuyu genişliği",
-            "Mevcut binalarda renovasyon için ideal",
-            "Panoramik kabin uyumlu",
-        ],
-        "dezavantajlar": [
-            "Kapasite sınırlı (≤1.600 kg)",
-            "Karmaşık alt çerçeve yapısı",
-            "Daha yüksek kuyu dibi gerekebilir",
-        ],
-        "tipik": "Tarihi bina yenileme, dar kuyu, konut (villa, butik otel)",
-    },
-    {
-        "id": "MR_GL_21_UP",
-        "ad": "Makine Daireli · Dişlisiz · 2:1 · Üstten Palanga",
-        "kisa": "MR Dişlisiz 2:1",
-        "hiz_max": 6.0,
-        "kapasite_max": 5000,
-        "kapasite_min": 800,
-        "kat_max": 60,
-        "mr": True,
-        "mrl": False,
-        "disli": False,
-        "dishisiz": True,
-        "oran_11": False,
-        "oran_21": True,
-        "ustten": True,
-        "alttan": False,
-        "cw_yan": True,
-        "cw_arka": True,
-        "pit_min": 1600,
-        "overhead_min": 4500,
-        "mrdairesi": True,
-        "avantajlar": [
-            "Çok yüksek yük + yüksek hız",
-            "Büyük ticari projeler",
-            "Uzun seyir mesafesi",
-        ],
-        "dezavantajlar": [
-            "Makine dairesi gerektirir",
-            "Yüksek kuyu başı gereksinimi",
-            "Karmaşık halat düzeni",
-            "Yüksek maliyet",
-        ],
-        "tipik": "Yüksek katlı AVM, ofis kuleleri, büyük hastaneler",
-    },
-    {
-        "id": "HYD_DIRECT",
-        "ad": "Hidrolik · Doğrudan Tahrik",
-        "kisa": "Hidrolik Doğrudan",
-        "hiz_max": 0.8,
-        "kapasite_max": 5000,
-        "kapasite_min": 200,
-        "kat_max": 5,
-        "mr": False,
-        "mrl": False,
-        "disli": False,
-        "dishisiz": False,
-        "oran_11": True,
-        "oran_21": False,
-        "ustten": False,
-        "alttan": True,
-        "cw_yan": False,
-        "cw_arka": False,
-        "pit_min": 400,
-        "overhead_min": 2500,
-        "mrdairesi": True,  # pompa dairesi
-        "avantajlar": [
-            "Çok düşük kuyu dibi ve üst yüksekliği",
-            "Karşı ağırlık gerekmez",
-            "Yüksek yük kapasitesi",
-            "Makine dairesi herhangi bir konumda",
-        ],
-        "dezavantajlar": [
-            "Sadece düşük kat sayısı (≤5 kat)",
-            "Hız düşük (≤0,8 m/s)",
-            "Yüksek enerji tüketimi",
-            "Çevre riski (yağ sızıntısı)",
-            "Sıcaklık hassasiyeti",
-        ],
-        "tipik": "Villa, 2–5 katlı küçük bina, engelli platformu",
-    },
+ANA_RAY = [
+    {"isim": "T50/A  (50mm)",  "taban": 50,  "kap_max": 320,  "hiz_max": 1.0},
+    {"isim": "T70/A  (70mm)",  "taban": 70,  "kap_max": 630,  "hiz_max": 1.6},
+    {"isim": "T89/B  (89mm)",  "taban": 89,  "kap_max": 1000, "hiz_max": 2.5},
+    {"isim": "T114/B (114mm)", "taban": 114, "kap_max": 2000, "hiz_max": 4.0},
+    {"isim": "T127/B (127mm)", "taban": 127, "kap_max": 5000, "hiz_max": 6.0},
 ]
 
-# ─────────────────────────────────────────────
-#  YARDIMCI FONKSİYONLAR
-# ─────────────────────────────────────────────
+SISTEMLER = [
+    {"id":"MRL_GL_11",      "ad":"MRL · Dişlisiz · 1:1",
+     "hizlar":[1.0,1.6,2.5], "kap_min":200,  "kap_max":2000, "kat_max":40,
+     "pit_min":1100, "oh_min":3500, "mr":False,
+     "cw_yandan":True, "cw_arkadan":True,
+     "avantajlar":["Makine dairesi gerekmez","Enerji verimli","Modern"],
+     "dezavantajlar":["Kuyu üstü ≥3500mm","Motor kuyu içinde"]},
 
-def temizle():
-    os.system("cls" if os.name == "nt" else "clear")
+    {"id":"MRL_GL_21",      "ad":"MRL · Dişlisiz · 2:1",
+     "hizlar":[1.0,1.6],     "kap_min":400,  "kap_max":3500, "kat_max":20,
+     "pit_min":1200, "oh_min":3800, "mr":False,
+     "cw_yandan":True, "cw_arkadan":True,
+     "avantajlar":["Makine dairesi gerekmez","Yüksek kapasite"],
+     "dezavantajlar":["Daha fazla kasnak","Kuyu üstü kritik"]},
 
+    {"id":"MRL_GL_11_BACK", "ad":"MRL · Dişlisiz · 1:1 · Alttan Palanga",
+     "hizlar":[0.63,1.0,1.6],"kap_min":200,  "kap_max":1600, "kat_max":20,
+     "pit_min":1200, "oh_min":2800, "mr":False,
+     "cw_yandan":False,"cw_arkadan":True,
+     "avantajlar":["Çok düşük kuyu üstü (≥2800mm)","Renovasyon için ideal"],
+     "dezavantajlar":["Kapasite ≤1600kg","Karmaşık alt çerçeve"]},
 
-def baslik_yaz(metin: str, alt_cizgi: str = "═"):
-    genislik = 62
-    print()
-    print(C + B + "╔" + alt_cizgi * (genislik - 2) + "╗")
-    pad = (genislik - 2 - len(metin)) // 2
-    print(C + B + "║" + " " * pad + W + B + metin + " " * (genislik - 2 - pad - len(metin)) + C + B + "║")
-    print(C + B + "╚" + alt_cizgi * (genislik - 2) + "╝" + RS)
-    print()
+    {"id":"MR_GR_11",       "ad":"MR · Dişlili · 1:1",
+     "hizlar":[0.63,1.0,1.6],"kap_min":200,  "kap_max":2000, "kat_max":20,
+     "pit_min":1200, "oh_min":3600, "mr":True,
+     "cw_yandan":True, "cw_arkadan":True,
+     "avantajlar":["Düşük maliyet","Yaygın yedek parça"],
+     "dezavantajlar":["Makine dairesi gerekir","Hız ≤1.6m/s"]},
 
+    {"id":"MR_GR_21",       "ad":"MR · Dişlili · 2:1",
+     "hizlar":[0.63,1.0],    "kap_min":500,  "kap_max":5000, "kat_max":15,
+     "pit_min":1400, "oh_min":4200, "mr":True,
+     "cw_yandan":True, "cw_arkadan":True,
+     "avantajlar":["Yüksek kapasite (≤5000kg)","Küçük motor"],
+     "dezavantajlar":["Makine dairesi gerekir","Hız ≤1.0m/s"]},
 
-def bolum_baslik(metin: str):
-    print(Y + B + f"\n  ▶  {metin}" + RS)
-    print(Y + "  " + "─" * 56 + RS)
+    {"id":"MR_GL_11",       "ad":"MR · Dişlisiz · 1:1",
+     "hizlar":[2.5,4.0,6.0], "kap_min":400,  "kap_max":2500, "kat_max":100,
+     "pit_min":1500, "oh_min":4000, "mr":True,
+     "cw_yandan":True, "cw_arkadan":True,
+     "avantajlar":["Çok yüksek hız","Uzun ömür","Sessiz"],
+     "dezavantajlar":["Makine dairesi gerekir","Yüksek maliyet"]},
+]
 
+# ─────────────────────────────────────────────────────────────────
+#  HESAPLAMA FONKSİYONLARI
+# ─────────────────────────────────────────────────────────────────
 
-def soru_sor(metin: str, secenekler: list, varsayilan: int = None) -> str:
-    """Numaralandırılmış seçenek menüsü ile soru sorar."""
-    print()
-    print(G + B + f"  ❓ {metin}" + RS)
-    for i, s in enumerate(secenekler, 1):
-        isaretci = G + " ▸ " if varsayilan and i == varsayilan else W + "   "
-        print(f"{isaretci}{C}{i}{RS}. {s}")
-    print()
-    while True:
-        try:
-            cevap = input(Y + "  Seçiminiz" + RS + f" [1–{len(secenekler)}]" +
-                          (f" (Varsayılan: {varsayilan})" if varsayilan else "") + ": ").strip()
-            if cevap == "" and varsayilan:
-                return secenekler[varsayilan - 1]
-            val = int(cevap)
-            if 1 <= val <= len(secenekler):
-                return secenekler[val - 1]
-            print(R + f"  Lütfen 1 ile {len(secenekler)} arasında bir sayı girin." + RS)
-        except ValueError:
-            print(R + "  Geçersiz giriş. Lütfen bir sayı girin." + RS)
+def ray_sec(kapasite, hiz):
+    for r in ANA_RAY:
+        if kapasite <= r["kap_max"] and hiz <= r["hiz_max"]:
+            return r
+    return ANA_RAY[-1]
 
+def kbd_hesapla(kyd, on_bosluk, cw_arkadan):
+    arka = ARKADAN_CW_PAYI if cw_arkadan else KABIN_ARKA_BOSLUGU
+    return kyd - on_bosluk - arka
 
-def sayi_sor(metin: str, min_val: float, max_val: float, varsayilan: float = None) -> float:
-    """Sayısal değer girişi alır."""
-    print()
-    aralik = f"[{min_val}–{max_val}]"
-    varsa = f" (Varsayılan: {varsayilan})" if varsayilan is not None else ""
-    while True:
-        try:
-            cevap = input(G + B + f"  ❓ {metin} " + RS + Y + aralik + varsa + ": " + RS).strip()
-            if cevap == "" and varsayilan is not None:
-                return float(varsayilan)
-            val = float(cevap)
-            if min_val <= val <= max_val:
-                return val
-            print(R + f"  Lütfen {min_val} ile {max_val} arasında bir değer girin." + RS)
-        except ValueError:
-            print(R + "  Geçersiz giriş. Lütfen sayısal bir değer girin." + RS)
+def ray_y_hesapla(kyd, on_bosluk, cw_arkadan):
+    kbd = kbd_hesapla(kyd, on_bosluk, cw_arkadan)
+    # Kabin on_bosluk'tan başladığı için, ortası on_bosluk + kbd/2 olur
+    return on_bosluk + kbd / 2, kbd
 
-
-def evet_hayir(metin: str, varsayilan: bool = True) -> bool:
-    varsayilan_str = "E/h" if varsayilan else "e/H"
-    print()
-    while True:
-        cevap = input(G + B + f"  ❓ {metin} " + RS + Y + f"[{varsayilan_str}]: " + RS).strip().lower()
-        if cevap in ("e", "evet", "y", "yes"):
-            return True
-        elif cevap in ("h", "hayır", "hayir", "n", "no"):
-            return False
-        elif cevap == "":
-            return varsayilan
-        else:
-            print(R + "  Lütfen 'e' (evet) veya 'h' (hayır) girin." + RS)
-
-
-def puan_goster(puan: int, max_puan: int = 10) -> str:
-    dolu = "█"
-    bos  = "░"
-    normalize = round((puan / max_puan) * 10)
-    renk = G if normalize >= 7 else (Y if normalize >= 4 else R)
-    return renk + dolu * normalize + D + bos * (10 - normalize) + RS
-
-
-def sonuc_karti_yaz(asansor: dict, puan: int, max_puan: int, sira: int):
-    """Tek bir asansör seçeneği için sonuç kartı yazar."""
-    genislik = 60
-    baslik = f"  #{sira}  {asansor['ad']}"
-    uyum_bar = puan_goster(puan, max_puan)
-
-    print()
-    renk_kart = G if sira == 1 else (C if sira == 2 else W)
-    print(renk_kart + B + "  ┌" + "─" * (genislik - 2) + "┐" + RS)
-    print(renk_kart + B + "  │" + RS + B + baslik.ljust(genislik - 2) + renk_kart + B + "│" + RS)
-    print(renk_kart + B + "  ├" + "─" * (genislik - 2) + "┤" + RS)
-
-    # Uyum çubuğu
-    uyum_yazi = f"  Uyum puanı: {uyum_bar}  {puan}/{max_puan}"
-    print(renk_kart + B + "  │" + RS + uyum_yazi.ljust(genislik + 8) + renk_kart + B + "│" + RS)
-
-    # Teknik özellikler
-    ozellikler = [
-        f"  ⚡ Maks hız        : {asansor['hiz_max']} m/s",
-        f"  ⚖  Kapasite        : {asansor['kapasite_min']}–{asansor['kapasite_max']} kg",
-        f"  🏢 Maks kat sayısı : {asansor['kat_max']} kat",
-        f"  ↕  Kuyu dibi min   : {asansor['pit_min']} mm",
-        f"  ↑  Kuyu üstü min   : {asansor['overhead_min']} mm",
-    ]
-    for oz in ozellikler:
-        print(renk_kart + B + "  │" + RS + oz.ljust(genislik - 2) + renk_kart + B + "│" + RS)
-
-    # Avantajlar
-    print(renk_kart + B + "  ├" + "─" * (genislik - 2) + "┤" + RS)
-    print(renk_kart + B + "  │" + RS + G + "  ✔ Avantajlar".ljust(genislik - 2) + renk_kart + B + "│" + RS)
-    for av in asansor["avantajlar"][:3]:
-        print(renk_kart + B + "  │" + RS + G + f"    • {av}".ljust(genislik - 2) + renk_kart + B + "│" + RS)
-
-    # Dezavantajlar
-    print(renk_kart + B + "  │" + RS + R + "  ✖ Dikkat Edilecekler".ljust(genislik - 2) + renk_kart + B + "│" + RS)
-    for dez in asansor["dezavantajlar"][:3]:
-        print(renk_kart + B + "  │" + RS + R + f"    • {dez}".ljust(genislik - 2) + renk_kart + B + "│" + RS)
-
-    # Tipik kullanım
-    print(renk_kart + B + "  ├" + "─" * (genislik - 2) + "┤" + RS)
-    tipik_metin = f"  💡 {asansor['tipik']}"
-    # Uzun metni sar
-    if len(tipik_metin) > genislik - 4:
-        tipik_metin = tipik_metin[:genislik - 7] + "..."
-    print(renk_kart + B + "  │" + RS + Y + tipik_metin.ljust(genislik - 2) + renk_kart + B + "│" + RS)
-    print(renk_kart + B + "  └" + "─" * (genislik - 2) + "┘" + RS)
-
-
-# ─────────────────────────────────────────────
-#  FİLTRELEME MOTORU
-# ─────────────────────────────────────────────
-
-def asansor_filtrele_ve_puanla(cevaplar: dict) -> list:
+def cw_yandan_karar(kyg, kyd, on_bosluk, ray_taban):
     """
-    Kullanıcı cevaplarına göre veritabanını filtreler ve puanlar.
-    Döndürür: [(puan, max_puan, asansor), ...]  sıralı
+    Döner: dict {
+      gecerli: bool,
+      senaryo: 'cakisiyor'|'cakismiyor'|'gecersiz',
+      cw_ust, cw_alt,
+      ray_x_sag,
+      mesaj
+    }
+    """
+    ray_y, kbd = ray_y_hesapla(kyd, on_bosluk, cw_arkadan=False)
+
+    if kbd <= 0:
+        return {"gecerli": False, "senaryo": "gecersiz",
+                "mesaj": "KbD ≤ 0, mekanizma kuyu derinliğini aşıyor"}
+
+    # Adım 1: CW alt köşeye yerleştir
+    cw_alt_k = kyd - CW_CALISMA_BOSLUGU
+    cw_ust_k = cw_alt_k - CW_Y_BOYU
+
+    if cw_ust_k < 0:
+        return {"gecerli": False, "senaryo": "gecersiz",
+                "mesaj": f"CW kuyu derinliğine sığmıyor (CW üst={cw_ust_k:.0f}mm < 0)"}
+
+    # Adım 2: Çakışma kontrolü
+    cakisiyor = (cw_ust_k <= ray_y <= cw_alt_k)
+
+    if cakisiyor:
+        # CW'yi ray_y'ye ortala
+        cw_ust = ray_y - CW_Y_BOYU / 2
+        cw_alt = ray_y + CW_Y_BOYU / 2
+        if cw_ust < 0 or cw_alt > kyd:
+            return {"gecerli": False, "senaryo": "gecersiz",
+                    "mesaj": "CW ortalandığında kuyu dışına çıkıyor"}
+        ray_x_sag = kyg - UZAK_MONTE_MESAFE - ray_taban / 2
+        return {"gecerli": True, "senaryo": "cakisiyor",
+                "cw_ust": cw_ust, "cw_alt": cw_alt,
+                "ray_x_sag": ray_x_sag,
+                "mesaj": f"Ray ana ağırlıkla çakışıyor → ray {UZAK_MONTE_MESAFE}mm uzak monte"}
+    else:
+        ray_x_sag = kyg - CW_B_MESAFE - ray_taban / 2
+        return {"gecerli": True, "senaryo": "cakismiyor",
+                "cw_ust": cw_ust_k, "cw_alt": cw_alt_k,
+                "ray_x_sag": ray_x_sag,
+                "mesaj": "Ray çakışmıyor → standart konumda"}
+
+def kbg_hesapla(ray_x_sol, ray_x_sag, ray_taban):
+    return ray_x_sag - ray_x_sol - ray_taban - YATAKLAMA_TOPLAM
+
+def tum_kombinasyonlari_hesapla(kyg, kyd, kapasite, sistem):
+    """
+    Tüm geçerli (cw_konum, mekanizma, hız) kombinasyonlarını hesapla.
+    Her biri için kabin boyutları ve ray konumlarını döndür.
     """
     sonuclar = []
 
-    for a in ASANSOR_DB:
-        puan = 0
-        max_p = 0
-        elendi = False
+    cw_konumlari = []
+    if sistem["cw_yandan"]:   cw_konumlari.append("Yandan")
+    if sistem["cw_arkadan"]:  cw_konumlari.append("Arkadan")
 
-        # ── ZORUNLU ELİMİNASYON KURALLARI ──────────────────────────
+    for cw_konum in cw_konumlari:
+        for mek_adi, mek in MEKANIZMA.items():
+            on_bosluk = mek["on"]
+            cw_arkadan = (cw_konum == "Arkadan")
 
-        # 1) Hız kontrolü
-        hiz = cevaplar.get("hiz", 1.0)
-        if hiz > a["hiz_max"]:
-            continue  # elenmiş
-
-        # 2) Kapasite kontrolü
-        kap = cevaplar.get("kapasite", 630)
-        if kap < a["kapasite_min"] or kap > a["kapasite_max"]:
-            continue
-
-        # 3) Kat sayısı kontrolü
-        kat = cevaplar.get("kat_sayisi", 5)
-        if kat > a["kat_max"]:
-            continue
-
-        # 4) Makine dairesi kısıtı
-        mr_var = cevaplar.get("mr_var", None)
-        if mr_var is False and a["mrdairesi"] is True and a["id"] not in ("HYD_DIRECT",):
-            # Eğer makine dairesi yok ve hidrolik değilse → MR sistemler elenir
-            if a["mr"] is True:
+            kbd = kbd_hesapla(kyd, on_bosluk, cw_arkadan)
+            if kbd <= 200:   # minimum kabin derinliği
                 continue
-        if mr_var is True and a["mrl"] is True and cevaplar.get("mrl_tercih") is False:
-            continue  # Kullanıcı özellikle MR istiyorsa MRL çıkar
 
-        # 5) Kuyu dibi boşluğu (pit depth)
-        pit = cevaplar.get("pit_derinligi", None)
-        if pit is not None and pit < a["pit_min"]:
-            continue
+            ray_y, _ = ray_y_hesapla(kyd, on_bosluk, cw_arkadan)
 
-        # 6) Kuyu üst yüksekliği (overhead)
-        overhead = cevaplar.get("overhead", None)
-        if overhead is not None and overhead < a["overhead_min"]:
-            continue
+            for hiz in sistem["hizlar"]:
+                ray = ray_sec(kapasite, hiz)
+                ray_taban = ray["taban"]
+                ray_x_sol = RAY_DUVAR_BOSLUGU + ray_taban / 2
 
-        # 7) Karşı ağırlık kısıtı
-        cw_pozisyon = cevaplar.get("cw_pozisyon", "Fark etmez")
-        if cw_pozisyon == "Sadece yandan" and not a["cw_yan"]:
-            continue
-        if cw_pozisyon == "Sadece arkadan" and not a["cw_arka"]:
-            continue
+                if cw_konum == "Yandan":
+                    cw = cw_yandan_karar(kyg, kyd, on_bosluk, ray_taban)
+                    if not cw["gecerli"]:
+                        continue
+                    ray_x_sag = cw["ray_x_sag"]
+                    cw_ust    = cw["cw_ust"]
+                    cw_alt    = cw["cw_alt"]
+                    cw_senaryo = cw["senaryo"]
+                    cw_mesaj   = cw["mesaj"]
+                    kbg_max = kbg_hesapla(ray_x_sol, ray_x_sag, ray_taban)
+                    kullanilabilir_w = kyg - CW_B_MESAFE  # CW tarafı hariç kullanılabilir genişlik
+                else:
+                    ray_x_sag = kyg - RAY_DUVAR_BOSLUGU - ray_taban / 2
+                    cw_ust = cw_alt = None
+                    cw_senaryo = "—"
+                    cw_mesaj   = "Arkadan CW"
+                    kbg_max = kbg_hesapla(ray_x_sol, ray_x_sag, ray_taban)
+                    kullanilabilir_w = kyg
 
-        # ── PUANLAMA ────────────────────────────────────────────────
+                if kbg_max <= 200:  # minimum kabin genişliği
+                    continue
 
-        # Enerji verimliliği önceliği
-        enerji = cevaplar.get("enerji_onceligi", "Orta")
-        max_p += 2
-        if enerji == "Yüksek":
-            if a["dishisiz"]:
-                puan += 2
-            elif a["disli"]:
-                puan += 1
-        elif enerji == "Orta":
-            puan += 1
+                # Kapı (LL) ve Mekanizma Genişliği (TMG) Hesabı
+                max_ll = kbg_max - 200
+                
+                # Standart adımlara göre kapı seçimi
+                if "3 panel" in mek_adi or "4 panel" in mek_adi:
+                    uygun_ll_listesi = [ll for ll in [800, 900, 1000, 1100, 1200] if ll <= max_ll]
+                else:
+                    uygun_ll_listesi = [ll for ll in [700, 800, 900, 1000, 1100, 1200] if ll <= max_ll]
+                
+                if not uygun_ll_listesi:
+                    continue  # Bu kuyuya standart bir kapı sığmıyor
+                    
+                gecerli_ll_ve_tmg = []
+                for secilen_ll in uygun_ll_listesi:
+                    # TMG (Toplam Mekanizma Genişliği) formülleri
+                    if mek_adi == "Merkezi 2 panel": tmg = (2.0 * secilen_ll) + 50
+                    elif mek_adi == "Merkezi 4 panel": tmg = (1.5 * secilen_ll) + 50
+                    elif mek_adi == "Teleskopik 2 panel": tmg = (1.5 * secilen_ll) + 100
+                    elif mek_adi == "Teleskopik 3 panel": tmg = (1.33 * secilen_ll) + 100
+                    elif mek_adi == "Teleskopik 4 panel": tmg = (1.25 * secilen_ll) + 100
+                    else: tmg = (2.0 * secilen_ll) + 50
+                    
+                    # TMG kuyuya sığıyor mu? (50 mm çalışma toleransı ile)
+                    if tmg + 50 <= kullanilabilir_w:
+                        gecerli_ll_ve_tmg.append((secilen_ll, tmg))
+                        
+                if not gecerli_ll_ve_tmg:
+                    continue
+                    
+                # En büyükten başlayarak 3 adede kadar al (2 basamak altı)
+                gecerli_ll_ve_tmg.sort(key=lambda x: x[0], reverse=True)
+                sinirli_ll_listesi = gecerli_ll_ve_tmg[:3]
+                
+                for secilen_ll, tmg in sinirli_ll_listesi:
+                    sonuclar.append({
+                        "cw_konum":   cw_konum,
+                        "mek":        mek_adi,
+                        "hiz":        hiz,
+                        "ray_isim":   ray["isim"],
+                        "ray_taban":  ray_taban,
+                        "kbg":        round(kbg_max),
+                        "kbd":        round(kbd),
+                        "ray_x_sol":  ray_x_sol,
+                        "ray_x_sag":  ray_x_sag,
+                        "ray_y":      ray_y,
+                        "cw_ust":     cw_ust,
+                        "cw_alt":     cw_alt,
+                        "cw_senaryo": cw_senaryo,
+                        "cw_mesaj":   cw_mesaj,
+                        "on_bosluk":  on_bosluk,
+                        "ll":         secilen_ll,
+                        "tmg":        round(tmg),
+                    })
 
-        # Bütçe önceliği
-        butce = cevaplar.get("butce", "Orta")
-        max_p += 2
-        if butce == "Ekonomik":
-            if a["disli"]:
-                puan += 2
-            else:
-                puan += 0
-        elif butce == "Orta":
-            if a["mrl"] and not a["disli"]:
-                puan += 2
-            else:
-                puan += 1
-        else:  # Premium
-            if a["dishisiz"]:
-                puan += 2
-            else:
-                puan += 1
-
-        # Bakım kolaylığı
-        bakim = cevaplar.get("bakim_kolay", True)
-        max_p += 1
-        if bakim and a["mr"]:
-            puan += 1
-        elif not bakim and a["mrl"]:
-            puan += 1
-
-        # Hız uyumu (istenene ne kadar yakın)
-        max_p += 2
-        oran = hiz / a["hiz_max"]
-        if 0.5 <= oran <= 1.0:
-            puan += 2
-        elif oran < 0.5:
-            puan += 1  # çok kapasiteli sistem, biraz israf
-
-        # Kapasite uyumu
-        max_p += 2
-        kap_oran = kap / a["kapasite_max"]
-        if 0.4 <= kap_oran <= 0.9:
-            puan += 2
-        elif kap_oran < 0.4:
-            puan += 1
-
-        # Uygulama tipi uyumu
-        uygulama = cevaplar.get("uygulama", "Konut")
-        max_p += 2
-        tipik_lower = a["tipik"].lower()
-        if uygulama == "Konut" and ("konut" in tipik_lower or "villa" in tipik_lower or "rezidans" in tipik_lower):
-            puan += 2
-        elif uygulama == "Ofis/Ticari" and ("ofis" in tipik_lower or "ticari" in tipik_lower or "avm" in tipik_lower):
-            puan += 2
-        elif uygulama == "Hastane" and "hastane" in tipik_lower:
-            puan += 2
-        elif uygulama == "Endüstriyel/Yük" and ("yük" in tipik_lower or "endüstri" in tipik_lower or "servis" in tipik_lower):
-            puan += 2
-        elif uygulama == "Otel/Turizm" and ("otel" in tipik_lower or "butik" in tipik_lower):
-            puan += 2
-        else:
-            puan += 1  # nötr
-
-        # Yenilik / estetik tercihi
-        modern = cevaplar.get("modern_tercih", True)
-        max_p += 1
-        if modern and a["mrl"]:
-            puan += 1
-        elif not modern and a["mr"] and a["disli"]:
-            puan += 1
-
-        sonuclar.append((puan, max_p, a))
-
-    # Puana göre sırala (yüksekten düşüğe)
-    sonuclar.sort(key=lambda x: x[0], reverse=True)
     return sonuclar
 
+# ─────────────────────────────────────────────────────────────────
+#  SVG ÜST GÖRÜNÜŞ
+# ─────────────────────────────────────────────────────────────────
 
-# ─────────────────────────────────────────────
-#  ANA PROGRAM AKIŞI
-# ─────────────────────────────────────────────
+def svg_ciz(r, kyg, kyd, uid="0"):
+    """r: tek bir kombinasyon dict'i, uid: unique id (clipPath çakışmasını önler)"""
+    clip_id = f"cb_{uid}"
+    SVG_W   = 760
+    MARGIN  = 55
+    ETIKET  = 120
 
-def sorulari_sor() -> dict:
-    cevaplar = {}
-
-    temizle()
-    baslik_yaz("ASANSÖR SİSTEM SEÇİCİ  v1.0", "═")
-    print(D + "  Avrupa Asansör Yönetmeliği (2014/33/EU) ve EN 81-20/50 standartları\n"
-              "  temel alınarak hazırlanmıştır. Sonuçlar ön değerlendirme niteliğindedir." + RS)
-
-    # ── BÖLÜM 1: Proje Bilgileri ─────────────────────────────────
-    bolum_baslik("1 / 6  —  Proje Tanımı")
-
-    cevaplar["uygulama"] = soru_sor(
-        "Asansör hangi amaçla kullanılacak?",
-        ["Konut", "Ofis/Ticari", "Hastane", "Endüstriyel/Yük", "Otel/Turizm"],
-        varsayilan=1,
+    olcek = min(
+        (SVG_W - MARGIN - ETIKET) / kyg,
+        (SVG_W - MARGIN - ETIKET) / kyd
     )
 
-    cevaplar["kat_sayisi"] = int(sayi_sor(
-        "Toplam kat sayısı (zemin dahil)?",
-        min_val=2, max_val=150, varsayilan=8
-    ))
+    def px(mm): return mm * olcek
+    def sx(mm): return MARGIN + px(mm)   # kuyu koordinatından svg x'e
+    def sy(mm): return MARGIN + px(mm)   # kuyu koordinatından svg y'ye
 
-    cevaplar["seyir_yuksekligi"] = sayi_sor(
-        "Toplam seyir yüksekliği (m)?",
-        min_val=3, max_val=500, varsayilan=cevaplar["kat_sayisi"] * 3.0
-    )
+    kw = px(kyg)
+    kh = px(kyd)
+    SVG_H = int(kh + MARGIN * 2 + 40)
 
-    # ── BÖLÜM 2: Performans Gereksinimleri ───────────────────────
-    bolum_baslik("2 / 6  —  Performans Gereksinimleri")
+    # Kabin kenarları (mm cinsinden)
+    kabin_sol  = r["ray_x_sol"] + r["ray_taban"]/2 + YATAKLAMA_TOPLAM/2
+    kabin_ust  = r["on_bosluk"]
+    kabin_sag  = kabin_sol + r["kbg"]
+    kabin_alt  = kabin_ust + r["kbd"]
 
-    cevaplar["kapasite"] = sayi_sor(
-        "İstenen taşıma kapasitesi (kg)?  [EN 81: min 320 kg]",
-        min_val=100, max_val=10000, varsayilan=630
-    )
+    kbx1 = sx(kabin_sol);  kby1 = sy(kabin_ust)
+    kbx2 = sx(kabin_sag);  kby2 = sy(kabin_alt)
+    kbw  = kbx2 - kbx1;    kbh  = kby2 - kby1
 
-    hiz_secenekler = {
-        "0,63 m/s — Villa / küçük konut":      0.63,
-        "1,00 m/s — Konut standardı":           1.00,
-        "1,60 m/s — Orta hız (konut/ofis)":    1.60,
-        "2,50 m/s — Hızlı (ofis/AVM)":         2.50,
-        "4,00 m/s — Yüksek hız":               4.00,
-        "6,00+ m/s — Çok yüksek kule":         6.00,
-    }
-    hiz_sec = soru_sor(
-        "İstenen nominal kabin hızı?",
-        list(hiz_secenekler.keys()),
-        varsayilan=2,
-    )
-    cevaplar["hiz"] = hiz_secenekler[hiz_sec]
+    # Ray px
+    rsx  = sx(r["ray_x_sol"]); rsy  = sy(r["ray_y"])
+    rdx  = sx(r["ray_x_sag"]); rdy  = sy(r["ray_y"])
+    rr   = max(5, px(15))
 
-    cevaplar["kabin_genislik"] = sayi_sor(
-        "Kabin iç genişliği (mm)?  [Tipik: 1000–2000 mm]",
-        min_val=600, max_val=3000, varsayilan=1100
-    )
-    cevaplar["kabin_derinlik"] = sayi_sor(
-        "Kabin iç derinliği (mm)?",
-        min_val=800, max_val=3000, varsayilan=1400
-    )
+    # CW
+    cw_svg = ""
+    if r["cw_konum"] == "Yandan" and r["cw_ust"] is not None:
+        cx1 = sx(kyg - CW_DUVAR_BOSLUGU - CW_X_BOYU)
+        cx2 = sx(kyg - CW_DUVAR_BOSLUGU)
+        cy1 = sy(r["cw_ust"]); cy2 = sy(r["cw_alt"])
+        cw_cx = (cx1+cx2)/2; cw_cy = (cy1+cy2)/2
+        cw_svg = f"""
+  <rect x="{cx1:.1f}" y="{cy1:.1f}" width="{cx2-cx1:.1f}" height="{cy2-cy1:.1f}"
+        fill="#FEE2E2" stroke="#DC2626" stroke-width="1.5"/>
+  <text x="{cw_cx:.1f}" y="{cw_cy:.1f}" text-anchor="middle" dominant-baseline="central"
+        font-size="11" font-weight="bold" fill="#DC2626">CW</text>
+  <line x1="{cw_cx:.1f}" y1="{cy1:.1f}" x2="{cw_cx:.1f}" y2="{cy2:.1f}"
+        stroke="#DC2626" stroke-width="0.5" stroke-dasharray="3 2"/>"""
+    elif r["cw_konum"] == "Arkadan":
+        # Arkadan CW: genişlik 1380 mm (CW_Y_BOYU), derinlik 150 mm (CW_X_BOYU)
+        cw_w = CW_Y_BOYU
+        cw_h = CW_X_BOYU
+        cx1 = sx(kyg/2 - cw_w/2); cx2 = sx(kyg/2 + cw_w/2)
+        cy1 = sy(kyd - ARKADAN_CW_PAYI + (ARKADAN_CW_PAYI - cw_h)/2); cy2 = cy1 + px(cw_h)
+        cw_cx=(cx1+cx2)/2; cw_cy=(cy1+cy2)/2
+        cw_svg = f"""
+  <rect x="{cx1:.1f}" y="{cy1:.1f}" width="{cx2-cx1:.1f}" height="{cy2-cy1:.1f}"
+        fill="#FEE2E2" stroke="#DC2626" stroke-width="1.5"/>
+  <text x="{cw_cx:.1f}" y="{cw_cy:.1f}" text-anchor="middle" dominant-baseline="central"
+        font-size="11" font-weight="bold" fill="#DC2626">CW</text>"""
 
-    # ── BÖLÜM 3: Kuyu Koşulları ──────────────────────────────────
-    bolum_baslik("3 / 6  —  Kuyu Koşulları")
+    # Tarama çizgileri (kabin içi)
+    tarama = ""
+    adim = max(12, px(100))
+    n = int((kbw + kbh) / adim) + 4
+    for i in range(-2, n):
+        x1t = kbx1 + i*adim; y1t = kby1
+        x2t = kbx1;           y2t = kby1 + i*adim
+        tarama += (f'<line x1="{x1t:.1f}" y1="{y1t:.1f}" '
+                   f'x2="{x2t:.1f}" y2="{y2t:.1f}" '
+                   f'stroke="#94A3B8" stroke-width="0.4" clip-path="url(#{clip_id})"/>')
 
-    pit_biliniyor = evet_hayir("Kuyu dibi (pit) derinliği biliniyor mu?", varsayilan=False)
-    if pit_biliniyor:
-        cevaplar["pit_derinligi"] = sayi_sor(
-            "Mevcut kuyu dibi boşluğu (mm)?",
-            min_val=200, max_val=3000, varsayilan=1200
+    # Mekanizma kutu (kapı tarafı)
+    mek_h = px(r["on_bosluk"])
+    mek_svg = ""
+    if mek_h > 4:
+        mek_svg = f"""
+  <rect x="{kbx1:.1f}" y="{MARGIN:.1f}" width="{kbw:.1f}" height="{mek_h:.1f}"
+        fill="#DBEAFE" stroke="#3B82F6" stroke-width="0.8" stroke-dasharray="4 2"/>
+  <text x="{(kbx1+kbx2)/2:.1f}" y="{MARGIN + mek_h/2:.1f}"
+        text-anchor="middle" dominant-baseline="central"
+        font-size="9" fill="#1D4ED8">{r["mek"]}</text>"""
+
+    svg = f"""<svg width="100%" viewBox="0 0 {SVG_W} {SVG_H}"
+     xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <clipPath id="{clip_id}">
+    <rect x="{kbx1:.1f}" y="{kby1:.1f}" width="{kbw:.1f}" height="{kbh:.1f}"/>
+  </clipPath>
+</defs>
+
+<!-- Kuyu arka plan -->
+<rect x="{MARGIN}" y="{MARGIN}" width="{kw:.1f}" height="{kh:.1f}"
+      fill="#F1F5F9" stroke="#1E293B" stroke-width="3"/>
+
+<!-- Kabin arka plan -->
+<rect x="{kbx1:.1f}" y="{kby1:.1f}" width="{kbw:.1f}" height="{kbh:.1f}" fill="white"/>
+{tarama}
+
+<!-- Kabin çerçeve -->
+<rect x="{kbx1:.1f}" y="{kby1:.1f}" width="{kbw:.1f}" height="{kbh:.1f}"
+      fill="none" stroke="#1E293B" stroke-width="1.8"/>
+
+<!-- Kabin etiketi -->
+<text x="{(kbx1+kbx2)/2:.1f}" y="{(kby1+kby2)/2:.1f}"
+      text-anchor="middle" dominant-baseline="central"
+      font-size="14" font-weight="600" fill="#334155">kabin</text>
+<text x="{(kbx1+kbx2)/2:.1f}" y="{(kby1+kby2)/2+16:.1f}"
+      text-anchor="middle" dominant-baseline="central"
+      font-size="11" fill="#64748B">{r["kbg"]}×{r["kbd"]} mm</text>
+
+<!-- Mekanizma alanı -->
+{mek_svg}
+
+<!-- CW -->
+{cw_svg}
+
+<!-- Ana raylar -->
+<circle cx="{rsx:.1f}" cy="{rsy:.1f}" r="{rr:.1f}"
+        fill="white" stroke="#1D4ED8" stroke-width="2"/>
+<circle cx="{rsx:.1f}" cy="{rsy:.1f}" r="3" fill="#1D4ED8"/>
+<circle cx="{rdx:.1f}" cy="{rdy:.1f}" r="{rr:.1f}"
+        fill="white" stroke="#1D4ED8" stroke-width="2"/>
+<circle cx="{rdx:.1f}" cy="{rdy:.1f}" r="3" fill="#1D4ED8"/>
+
+<!-- Ray ekseni (kabin ağırlık merkezi hizası) -->
+<line x1="{MARGIN:.1f}" y1="{rsy:.1f}" x2="{MARGIN+kw:.1f}" y2="{rsy:.1f}"
+      stroke="#2563EB" stroke-width="1.0" stroke-dasharray="10 4" opacity="0.75"/>
+<text x="{MARGIN+4:.1f}" y="{rsy-4:.1f}" font-size="9" fill="#2563EB">ağırlık merkezi</text>
+
+<!-- ── ÖLÇÜLER ── -->
+<!-- KyG -->
+<line x1="{MARGIN:.1f}" y1="{MARGIN-20:.1f}" x2="{MARGIN+kw:.1f}" y2="{MARGIN-20:.1f}"
+      stroke="#475569" stroke-width="0.8"/>
+<line x1="{MARGIN:.1f}" y1="{MARGIN-26:.1f}" x2="{MARGIN:.1f}" y2="{MARGIN-14:.1f}"
+      stroke="#475569" stroke-width="0.8"/>
+<line x1="{MARGIN+kw:.1f}" y1="{MARGIN-26:.1f}" x2="{MARGIN+kw:.1f}" y2="{MARGIN-14:.1f}"
+      stroke="#475569" stroke-width="0.8"/>
+<text x="{MARGIN+kw/2:.1f}" y="{MARGIN-30:.1f}" text-anchor="middle"
+      font-size="11" fill="#475569">KyG = {kyg} mm</text>
+
+<!-- KyD -->
+<line x1="{MARGIN+kw+20:.1f}" y1="{MARGIN:.1f}" x2="{MARGIN+kw+20:.1f}" y2="{MARGIN+kh:.1f}"
+      stroke="#475569" stroke-width="0.8"/>
+<line x1="{MARGIN+kw+14:.1f}" y1="{MARGIN:.1f}" x2="{MARGIN+kw+26:.1f}" y2="{MARGIN:.1f}"
+      stroke="#475569" stroke-width="0.8"/>
+<line x1="{MARGIN+kw+14:.1f}" y1="{MARGIN+kh:.1f}" x2="{MARGIN+kw+26:.1f}" y2="{MARGIN+kh:.1f}"
+      stroke="#475569" stroke-width="0.8"/>
+<text x="{MARGIN+kw+30:.1f}" y="{MARGIN+kh/2:.1f}" text-anchor="start"
+      dominant-baseline="central" font-size="11" fill="#475569">KyD = {kyd} mm</text>
+
+<!-- KbG -->
+<line x1="{kbx1:.1f}" y1="{kby2+16:.1f}" x2="{kbx2:.1f}" y2="{kby2+16:.1f}"
+      stroke="#059669" stroke-width="0.8"/>
+<line x1="{kbx1:.1f}" y1="{kby2+10:.1f}" x2="{kbx1:.1f}" y2="{kby2+22:.1f}"
+      stroke="#059669" stroke-width="0.8"/>
+<line x1="{kbx2:.1f}" y1="{kby2+10:.1f}" x2="{kbx2:.1f}" y2="{kby2+22:.1f}"
+      stroke="#059669" stroke-width="0.8"/>
+<text x="{(kbx1+kbx2)/2:.1f}" y="{kby2+34:.1f}" text-anchor="middle"
+      font-size="11" fill="#059669">KbG = {r["kbg"]} mm</text>
+
+<!-- KbD -->
+<line x1="{kbx1-16:.1f}" y1="{kby1:.1f}" x2="{kbx1-16:.1f}" y2="{kby2:.1f}"
+      stroke="#059669" stroke-width="0.8"/>
+<line x1="{kbx1-22:.1f}" y1="{kby1:.1f}" x2="{kbx1-10:.1f}" y2="{kby1:.1f}"
+      stroke="#059669" stroke-width="0.8"/>
+<line x1="{kbx1-22:.1f}" y1="{kby2:.1f}" x2="{kbx1-10:.1f}" y2="{kby2:.1f}"
+      stroke="#059669" stroke-width="0.8"/>
+<text x="{kbx1-26:.1f}" y="{(kby1+kby2)/2:.1f}" text-anchor="middle"
+      dominant-baseline="central" font-size="11" fill="#059669"
+      transform="rotate(-90,{kbx1-26:.1f},{(kby1+kby2)/2:.1f})">KbD = {r["kbd"]} mm</text>
+
+<!-- Eksen etiketleri -->
+<text x="{MARGIN+4:.1f}" y="{MARGIN-4:.1f}" font-size="9" fill="#94A3B8">x →</text>
+<text x="{MARGIN-4:.1f}" y="{MARGIN+16:.1f}" font-size="9" fill="#94A3B8"
+      transform="rotate(-90,{MARGIN-4:.1f},{MARGIN+16:.1f})">y ↓</text>
+</svg>"""
+
+    # st.markdown ile render için doğrudan svg string'i dönüyoruz
+    return svg, SVG_H
+
+def kapi_mekanizmasi_svg(mek_adi, kbg, ll, tmg):
+    """
+    Kabin genişliğine (kbg) orantılı olarak, şematik kapı mekanizması çizer.
+    Sadece kapalı durumdaki panelleri gösterir.
+    """
+    SVG_W = 640
+    SVG_H = 180
+    MARGIN = 20
+    
+    olcek = (SVG_W - 2 * MARGIN) / kbg
+    def px(mm): return mm * olcek
+    
+    # Kasa
+    kabin_w_px = px(kbg)
+    kabin_x = MARGIN + (SVG_W - 2*MARGIN - kabin_w_px)/2
+    kasa_w_px = px(tmg)
+    kasa_x = kabin_x + (kabin_w_px - kasa_w_px)/2
+    
+    svg_kasa = f"""
+    <!-- Kasa / Kılavuz -->
+    <rect x="{kasa_x:.1f}" y="40" width="{kasa_w_px:.1f}" height="70" fill="#F8FAFC" stroke="#94A3B8" stroke-width="1.5"/>
+    <line x1="{kasa_x:.1f}" y1="75" x2="{kasa_x + kasa_w_px:.1f}" y2="75" stroke="#CBD5E1" stroke-width="1" stroke-dasharray="4 2"/>
+    <text x="{SVG_W/2:.1f}" y="20" text-anchor="middle" font-size="14" font-weight="bold" fill="#1E293B">{mek_adi} (LL: {ll} mm, TMG: {tmg} mm)</text>
+    <text x="{SVG_W/2:.1f}" y="135" text-anchor="middle" font-size="12" fill="#64748B">Kabin Genişliği (KbG): {kbg} mm</text>
+    """
+    
+    panel_svg = ""
+    panel_y = 48
+    panel_h = 10
+    panel_bosluk = 4
+    
+    merkez_x = SVG_W / 2
+    giris_w_px = px(ll)
+    
+    if mek_adi == "Merkezi 2 panel":
+        p_w = giris_w_px / 2 + 5
+        panel_svg += f'<rect x="{merkez_x - p_w:.1f}" y="{panel_y:.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
+        panel_svg += f'<rect x="{merkez_x:.1f}" y="{panel_y:.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
+    
+    elif mek_adi == "Merkezi 4 panel":
+        p_w = giris_w_px / 4 + 5
+        panel_svg += f'<rect x="{merkez_x - p_w:.1f}" y="{panel_y:.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
+        panel_svg += f'<rect x="{merkez_x:.1f}" y="{panel_y:.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
+        panel_svg += f'<rect x="{merkez_x - 2*p_w + 2:.1f}" y="{panel_y + panel_h + panel_bosluk:.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
+        panel_svg += f'<rect x="{merkez_x + p_w - 2:.1f}" y="{panel_y + panel_h + panel_bosluk:.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
+        
+    elif mek_adi == "Teleskopik 2 panel":
+        p_w = giris_w_px / 2 + 5
+        sol_baslangic = merkez_x - giris_w_px / 2
+        panel_svg += f'<rect x="{sol_baslangic:.1f}" y="{panel_y:.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
+        panel_svg += f'<rect x="{sol_baslangic + p_w - 2:.1f}" y="{panel_y + panel_h + panel_bosluk:.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
+
+    elif mek_adi == "Teleskopik 3 panel":
+        p_w = giris_w_px / 3 + 5
+        sol_baslangic = merkez_x - giris_w_px / 2
+        for i in range(3):
+            panel_svg += f'<rect x="{sol_baslangic + i*(p_w-2):.1f}" y="{panel_y + i*(panel_h + panel_bosluk):.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
+
+    elif mek_adi == "Teleskopik 4 panel":
+        p_w = giris_w_px / 4 + 5
+        sol_baslangic = merkez_x - giris_w_px / 2
+        for i in range(4):
+            panel_svg += f'<rect x="{sol_baslangic + i*(p_w-2):.1f}" y="{panel_y + i*(panel_h + panel_bosluk):.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
+
+    svg_html = f"""<svg width="100%" viewBox="0 0 {SVG_W} {SVG_H}" xmlns="http://www.w3.org/2000/svg">
+{svg_kasa}
+{panel_svg}
+</svg>"""
+    return svg_html, SVG_H
+
+# ─────────────────────────────────────────────────────────────────
+#  STREAMLIT ARAYÜZÜ
+# ─────────────────────────────────────────────────────────────────
+st.title("🛗 Asansör Sistem Seçici v2.0")
+st.caption("EN 81-20/50 · 2014/33/EU · Ön değerlendirme aracı")
+
+# ── Sidebar ──────────────────────────────────────────────────────
+with st.sidebar:
+    st.header("📐 Kuyu Ölçüleri")
+    kyg = st.number_input("Kuyu Genişliği KyG (mm)", 800, 5000, 2000, 50)
+    kyd = st.number_input("Kuyu Derinliği KyD (mm)", 800, 6000, 2200, 50)
+    pit = st.number_input("Kuyu Dibi — Pit (mm)",    200, 3000, 1600, 50)
+    kuyu_boy = st.number_input("Kuyu Toplam Boyu (mm)", 3000, 200000, 30000, 500)
+
+    st.header("🏢 Proje")
+    kat     = st.number_input("Kat Sayısı", 2, 150, 8, 1)
+    kapasite= st.slider("Kapasite (kg)", 100, 5000, 800, 10)
+    st.selectbox("Kullanım Amacı",
+                 ["Konut","Ofis/Ticari","Hastane","Endüstriyel","Otel"])
+
+    st.header("🎯 Tercihler")
+    mr_sec  = st.selectbox("Makine Dairesi",
+                ["Fark etmez","Makine dairesi yok (MRL)","Makine dairesi var (MR)"])
+    st.select_slider("Bütçe", ["Ekonomik","Orta","Premium"], "Orta")
+    deprem  = st.checkbox("Deprem Bölgesi (EN 81-77)")
+    yangin  = st.checkbox("İtfaiyeci Asansörü (EN 81-72)")
+
+mr_var = None
+if "yok" in mr_sec:  mr_var = False
+elif "var" in mr_sec: mr_var = True
+
+# ── Hesapla ──────────────────────────────────────────────────────
+seyir    = (kat - 1) * KAT_YUKSEKLIGI
+overhead = kuyu_boy - pit - seyir
+
+# Metrik satırı
+c1,c2,c3,c4 = st.columns(4)
+c1.metric("Seyir Yüksekliği", f"{seyir/1000:.1f} m")
+c2.metric("Overhead (Hesaplanan)", f"{overhead} mm",
+          delta="✓" if overhead > 0 else "✗ Yetersiz",
+          delta_color="normal" if overhead > 0 else "inverse")
+c3.metric("Pit", f"{pit} mm")
+
+if overhead <= 0:
+    st.error(f"Overhead negatif ({overhead} mm) — kuyu boyunu veya kat sayısını kontrol edin.")
+    st.stop()
+
+# Sistem filtrele
+uygun = [s for s in SISTEMLER if
+         s["kap_min"] <= kapasite <= s["kap_max"] and
+         kat <= s["kat_max"] and
+         pit >= s["pit_min"] and
+         overhead >= s["oh_min"] and
+         (mr_var is None or s["mr"] == mr_var)]
+
+c4.metric("Uygun Sistem", len(uygun))
+
+if not uygun:
+    st.error("Girilen parametrelerle uyumlu sistem bulunamadı.")
+    st.stop()
+
+st.divider()
+
+# ── Sistem sekmeleri ─────────────────────────────────────────────
+tabs = st.tabs([s["ad"] for s in uygun])
+
+for tab, sistem in zip(tabs, uygun):
+    with tab:
+
+        # Tüm kombinasyonları hesapla
+        kombinasyonlar = tum_kombinasyonlari_hesapla(kyg, kyd, kapasite, sistem)
+
+        if not kombinasyonlar:
+            st.warning("Bu sistem için geçerli kombinasyon bulunamadı.")
+            continue
+
+        # ── Sonuç tablosu ────────────────────────────────────────
+        st.markdown("#### 📋 Tüm Geçerli Kombinasyonlar")
+
+        tablo = []
+        for i, r in enumerate(kombinasyonlar):
+            tablo.append({
+                "#":           i+1,
+                "CW Konum":    r["cw_konum"],
+                "Mekanizma":   r["mek"],
+                "Kapı (LL)":   f"{r['ll']} mm",
+                "Hız (m/s)":   r["hiz"],
+                "Ana Ray":     r["ray_isim"],
+                "KbG (mm)":    r["kbg"],
+                "KbD (mm)":    r["kbd"],
+                "CW Durum":    r["cw_senaryo"],
+            })
+
+        st.dataframe(tablo, use_container_width=True, hide_index=True)
+
+        # ── Kombinasyon seç & çizim ──────────────────────────────
+        st.markdown("#### 📐 Üstten Görünüş Çizimi")
+
+        secenekler = [
+            f"#{i+1} | {r['cw_konum']} CW | {r['mek']} | Kapı LL={r['ll']}mm | {r['hiz']} m/s | "
+            f"KbG={r['kbg']}mm KbD={r['kbd']}mm"
+            for i, r in enumerate(kombinasyonlar)
+        ]
+
+        secim_idx = st.selectbox(
+            "Görüntülenecek kombinasyonu seçin:",
+            range(len(secenekler)),
+            format_func=lambda i: secenekler[i],
+            key=f"secim_{sistem['id']}"
         )
-    else:
-        cevaplar["pit_derinligi"] = None
 
-    oh_biliniyor = evet_hayir("Kuyu üst boşluğu (overhead) biliniyor mu?", varsayilan=False)
-    if oh_biliniyor:
-        cevaplar["overhead"] = sayi_sor(
-            "Mevcut kuyu üst boşluğu (mm)?",
-            min_val=2000, max_val=8000, varsayilan=3600
-        )
-    else:
-        cevaplar["overhead"] = None
+        r = kombinasyonlar[secim_idx]
 
-    cevaplar["cw_pozisyon"] = soru_sor(
-        "Karşı ağırlık (counterweight) konumu için kısıt var mı?",
-        ["Fark etmez", "Sadece yandan", "Sadece arkadan"],
-        varsayilan=1,
-    )
+        # CW mesajı
+        if r["cw_konum"] == "Yandan":
+            if r["cw_senaryo"] == "cakisiyor":
+                st.info(f"ℹ️ {r['cw_mesaj']}")
+            else:
+                st.success(f"✅ {r['cw_mesaj']}")
 
-    # ── BÖLÜM 4: Makine Dairesi ──────────────────────────────────
-    bolum_baslik("4 / 6  —  Makine Dairesi Durumu")
+        # SVG çizim — uid ile clipPath çakışmasını önle
+        uid = f"{sistem['id']}_{secim_idx}"
+        svg_html, svg_h = svg_ciz(r, kyg, kyd, uid=uid)
+        svg_cleaned = svg_html.replace("\n", " ")
+        st.markdown(f'<div align="center">{svg_cleaned}</div>', unsafe_allow_html=True)
 
-    mr_durum = soru_sor(
-        "Makine dairesi durumu?",
-        [
-            "Mevcut / planlanmış makine dairesi var",
-            "Makine dairesi yok, MRL tercih edilir",
-            "Hidrolik düşünülüyor (düşük kat, yüksek yük)",
-            "Fark etmez / uzman karar versin",
-        ],
-        varsayilan=2,
-    )
-    if "yok" in mr_durum.lower() or "mrl" in mr_durum.lower():
-        cevaplar["mr_var"] = False
-        cevaplar["mrl_tercih"] = True
-    elif "var" in mr_durum.lower():
-        cevaplar["mr_var"] = True
-        cevaplar["mrl_tercih"] = False
-    else:
-        cevaplar["mr_var"] = None
-        cevaplar["mrl_tercih"] = None
+        # Kapı mekanizması SVG'sini çizdir
+        st.markdown("#### 🚪 Kapı Mekanizması — Üstten Görünüş")
+        kapi_html, kapi_h = kapi_mekanizmasi_svg(r["mek"], r["kbg"], r["ll"], r["tmg"])
+        kapi_cleaned = kapi_html.replace("\n", " ")
+        st.markdown(f'<div align="center">{kapi_cleaned}</div>', unsafe_allow_html=True)
 
-    # ── BÖLÜM 5: Öncelikler ──────────────────────────────────────
-    bolum_baslik("5 / 6  —  Proje Öncelikleri")
+        # Özet kutucuklar
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Kabin Genişliği (KbG)", f"{r['kbg']} mm")
+        col2.metric("Net Kapı (LL)", f"{r['ll']} mm")
+        col3.metric("Ana Ray", r["ray_isim"])
+        col4.metric("Hız", f"{r['hiz']} m/s")
 
-    cevaplar["butce"] = soru_sor(
-        "Bütçe önceliği?",
-        ["Ekonomik (ilk maliyet düşük tutulsun)", "Orta (denge)", "Premium (en iyi teknoloji)"],
-        varsayilan=2,
-    )
-    cevaplar["butce"] = {"Ekonomik (ilk maliyet düşük tutulsun)": "Ekonomik",
-                         "Orta (denge)": "Orta",
-                         "Premium (en iyi teknoloji)": "Premium"}[cevaplar["butce"]]
+        # ── Sistem detayları ─────────────────────────────────────
+        with st.expander("ℹ️ Sistem Bilgileri"):
+            ca, cb = st.columns(2)
+            with ca:
+                st.markdown("**✔ Avantajlar**")
+                for av in sistem["avantajlar"]:
+                    st.markdown(f"- {av}")
+            with cb:
+                st.markdown("**⚠ Dikkat**")
+                for dez in sistem["dezavantajlar"]:
+                    st.markdown(f"- {dez}")
+            st.caption(f"Pit min: {sistem['pit_min']}mm | "
+                      f"Overhead min: {sistem['oh_min']}mm | "
+                      f"Maks kat: {sistem['kat_max']}")
 
-    cevaplar["enerji_onceligi"] = soru_sor(
-        "Enerji verimliliği önceliği?",
-        ["Düşük (standart yeterli)", "Orta", "Yüksek (yeşil bina / LEED hedefi)"],
-        varsayilan=2,
-    )
-    cevaplar["enerji_onceligi"] = {"Düşük (standart yeterli)": "Düşük",
-                                    "Orta": "Orta",
-                                    "Yüksek (yeşil bina / LEED hedefi)": "Yüksek"}[cevaplar["enerji_onceligi"]]
-
-    cevaplar["bakim_kolay"] = evet_hayir(
-        "Bakım kolaylığı öncelikli mi? (Makine daireli sistemler daha kolay erişim sunar)",
-        varsayilan=False
-    )
-
-    cevaplar["modern_tercih"] = evet_hayir(
-        "Modern / dijital kontrol sistemi (MRL/gearless) tercih edilsin mi?",
-        varsayilan=True
-    )
-
-    # ── BÖLÜM 6: Ek Özellikler ───────────────────────────────────
-    bolum_baslik("6 / 6  —  Ek Özellikler")
-
-    cevaplar["acil_enerji"] = evet_hayir(
-        "Acil durum / ARD (Automatic Rescue Device) gerekli mi?",
-        varsayilan=True
-    )
-
-    cevaplar["deprem_bolgesi"] = evet_hayir(
-        "Deprem bölgesi (sismik kısıt) söz konusu mu?",
-        varsayilan=False
-    )
-
-    cevaplar["yangin_servisi"] = evet_hayir(
-        "İtfaiyeci servisi (Firefighters' lift — EN 81-72) gerekli mi?",
-        varsayilan=False
-    )
-
-    return cevaplar
-
-
-def sonuclari_goster(sonuclar: list, cevaplar: dict):
-    temizle()
-    baslik_yaz("SONUÇLAR — ÖNERİLEN ASANSÖR KONFİGÜRASYONLARI", "═")
-
-    if not sonuclar:
-        print(R + B + "\n  ✖  Girilen parametrelerle uyumlu standart sistem bulunamadı.\n"
-              "     Lütfen parametreleri gözden geçiriniz veya bir uzmanla görüşünüz.\n" + RS)
-        return
-
-    # Özet giriş parametreleri
-    bolum_baslik("Girilen Parametreler")
-    ozet = [
-        ("Uygulama",        cevaplar.get("uygulama", "—")),
-        ("Kat sayısı",       f"{cevaplar.get('kat_sayisi', '—')} kat"),
-        ("Kapasite",         f"{cevaplar.get('kapasite', '—')} kg"),
-        ("Hız",              f"{cevaplar.get('hiz', '—')} m/s"),
-        ("Kabin (G×D)",      f"{cevaplar.get('kabin_genislik', '—')} × {cevaplar.get('kabin_derinlik', '—')} mm"),
-        ("Kuyu dibi",        f"{cevaplar.get('pit_derinligi', '?')} mm" if cevaplar.get('pit_derinligi') else "Belirtilmedi"),
-        ("Kuyu üstü",        f"{cevaplar.get('overhead', '?')} mm" if cevaplar.get('overhead') else "Belirtilmedi"),
-        ("Makine dairesi",   "Var" if cevaplar.get('mr_var') else ("Yok" if cevaplar.get('mr_var') is False else "Fark etmez")),
-        ("Bütçe",            cevaplar.get("butce", "—")),
-        ("Enerji",           cevaplar.get("enerji_onceligi", "—")),
-    ]
-    for k, v in ozet:
-        print(f"  {D}{k:<22}{RS}{W}{v}{RS}")
-
-    # Sonuç kartları (en fazla 4)
-    goster_sayisi = min(4, len(sonuclar))
-    bolum_baslik(f"Uygun Asansör Sistemleri  ({len(sonuclar)} eşleşme bulundu, en iyi {goster_sayisi} gösteriliyor)")
-
-    for sira, (puan, max_p, asansor) in enumerate(sonuclar[:goster_sayisi], 1):
-        sonuc_karti_yaz(asansor, puan, max_p, sira)
-
-    # Ek notlar
-    print()
-    print(D + "  ─" * 30 + RS)
-    print(M + B + "\n  📋 ÖNEMLİ NOTLAR\n" + RS)
-    notlar = [
-        "Bu analiz ön değerlendirme amacıyla hazırlanmıştır.",
-        "Kesin sistem seçimi için lisanslı asansör mühendisi onayı zorunludur.",
-        "EN 81-20, EN 81-50 ve yerel yönetmeliklere uygunluk doğrulanmalıdır.",
-        "Deprem bölgesiyse EN 81-77 sismik gereksinimleri de değerlendirilmeli.",
-        "İtfaiyeci asansörü gerekiyorsa EN 81-72 kapsamında ayrı inceleme yapılmalı.",
-    ]
-    if cevaplar.get("deprem_bolgesi"):
-        notlar.append("⚠  Sismik bölge seçildi → karşı ağırlık kilitleri ve kabin tamponları kritik.")
-    if cevaplar.get("yangin_servisi"):
-        notlar.append("⚠  İtfaiyeci asansörü → ayrı kuyu, özel kapı ve kontrol paneli gerektirir.")
-    for n in notlar:
-        print(Y + f"  • {n}" + RS)
-    print()
-
-
-def tekrar_sor() -> bool:
-    print()
-    return evet_hayir("Yeni bir sorgulama yapmak ister misiniz?", varsayilan=True)
-
-
-def main():
-    while True:
-        try:
-            cevaplar = sorulari_sor()
-            sonuclar = asansor_filtrele_ve_puanla(cevaplar)
-            sonuclari_goster(sonuclar, cevaplar)
-            if not tekrar_sor():
-                print(C + B + "\n  Asansör Sistem Seçici kapatılıyor. İyi çalışmalar!\n" + RS)
-                break
-        except KeyboardInterrupt:
-            print(R + "\n\n  Program sonlandırıldı.\n" + RS)
-            sys.exit(0)
-
-
-if __name__ == "__main__":
-    main()
+# ── Notlar ───────────────────────────────────────────────────────
+st.divider()
+st.caption("⚠ Ön değerlendirme aracıdır. Kesin seçim için lisanslı mühendis onayı gerekir.")
+if deprem: st.warning("⚠ Deprem bölgesi: EN 81-77 sismik gereksinimlerini inceleyin.")
+if yangin: st.warning("⚠ İtfaiyeci asansörü: EN 81-72 kapsamında ayrı kuyu gerekir.")
