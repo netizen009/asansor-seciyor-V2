@@ -1,14 +1,13 @@
 import streamlit as st
 import streamlit.components.v1 as components
+import math
 
-st.set_page_config(page_title="Asansör Sistem Seçici v2", page_icon="🛗", layout="wide")
+st.set_page_config(page_title="Asansör Teknik Plan Seçici v3", page_icon="🛗", layout="wide")
 
 # ─────────────────────────────────────────────────────────────────
-#  SABİT DEĞERLER
+#  SABİT DEĞERLER VE YENİ TEKNİK HESAP SABİTLERİ (Resim 0, 3'ten çıkarım)
 # ─────────────────────────────────────────────────────────────────
 KAT_YUKSEKLIGI     = 3000
-YATAKLAMA_TOPLAM   = 150
-RAY_DUVAR_BOSLUGU  = 100
 KABIN_ARKA_BOSLUGU = 50
 ARKADAN_CW_PAYI    = 300
 CW_Y_BOYU          = 1380
@@ -18,23 +17,33 @@ CW_CALISMA_BOSLUGU = 75
 CW_B_MESAFE        = 300   # 50+150+100
 UZAK_MONTE_MESAFE  = 310
 
+# YENİ TEKNİK SABİTLER (HESAP İÇİN GEREKLİ):
+PATEN_TEKNIK_GENISLIK = 140   # Resim 3'teki paten detayından (örnek değer)
+PATEN_TEKNIK_DERINLIK = 120   # Paten kutu derinliği (örnek değer)
+KABIN_PATEN_TOLERANS = 25     # Kabin kenarı ile paten kutusu arası tolerans (Resim 3: 25mm)
+RAY_EKSEN_TOLERANS   = 5      # Paten merkezi ile ray ekseni arası tolerans (Resim 3'ten çıkarım)
+# Kapı mekanizması derinlikleri (Resim 3: merkezi 2 panel için 170mm giriş derinliği)
+KAPI_GIRIS_DERINLIK  = 170
+# Effective Opening (EE) ve Clear Opening (PLW) arası fark (Örnek: EE = LL, PLW = LL + panel kapak payı, Resim 3: EE=740, PLW=1450)
+EE_OFFSET = 0 # Şimdilik EE = LL varsayıyoruz.
+
 # ─────────────────────────────────────────────────────────────────
-#  TABLOLAR
+#  TABLOLAR (Ray, Mekanizma, Sistem)
 # ─────────────────────────────────────────────────────────────────
 MEKANIZMA = {
-    "Merkezi 2 panel":    {"on": 240},
-    "Merkezi 4 panel":    {"on": 330},
-    "Teleskopik 2 panel": {"on": 310},
-    "Teleskopik 3 panel": {"on": 400},
-    "Teleskopik 4 panel": {"on": 490},
+    "Merkezi 2 panel":    {"on": 240, "derinlik": 170, "tmh_carpan": 2.0, "tmh_offset": 50},
+    "Merkezi 4 panel":    {"on": 330, "derinlik": 210, "tmh_carpan": 1.5, "tmh_offset": 50},
+    "Teleskopik 2 panel": {"on": 310, "derinlik": 180, "tmh_carpan": 1.5, "tmh_offset": 100},
+    "Teleskopik 3 panel": {"on": 400, "derinlik": 220, "tmh_carpan": 1.33,"tmh_offset": 100},
+    "Teleskopik 4 panel": {"on": 490, "derinlik": 250, "tmh_carpan": 1.25,"tmh_offset": 100},
 }
 
 ANA_RAY = [
-    {"isim": "T50/A  (50mm)",  "taban": 50,  "kap_max": 320,  "hiz_max": 1.0},
-    {"isim": "T70/A  (70mm)",  "taban": 70,  "kap_max": 630,  "hiz_max": 1.6},
-    {"isim": "T89/B  (89mm)",  "taban": 89,  "kap_max": 1000, "hiz_max": 2.5},
-    {"isim": "T114/B (114mm)", "taban": 114, "kap_max": 2000, "hiz_max": 4.0},
-    {"isim": "T127/B (127mm)", "taban": 127, "kap_max": 5000, "hiz_max": 6.0},
+    {"isim": "T50/A",  "taban": 50,  "kafa": 50,  "yukseklik": 50, "kap_max": 320,  "hiz_max": 1.0},
+    {"isim": "T70/A",  "taban": 70,  "kafa": 65,  "yukseklik": 65, "kap_max": 630,  "hiz_max": 1.6},
+    {"isim": "T89/B",  "taban": 89,  "kafa": 80,  "yukseklik": 80, "kap_max": 1000, "hiz_max": 2.5},
+    {"isim": "T114/B", "taban": 114, "kafa": 90,  "yukseklik": 90, "kap_max": 2000, "hiz_max": 4.0},
+    {"isim": "T127/B", "taban": 127, "kafa": 110, "yukseklik": 110,"kap_max": 5000, "hiz_max": 6.0},
 ]
 
 SISTEMLER = [
@@ -82,7 +91,7 @@ SISTEMLER = [
 ]
 
 # ─────────────────────────────────────────────────────────────────
-#  HESAPLAMA FONKSİYONLARI
+#  HESAPLAMA FONKSİYONLARI (Geliştirilmiş Teknik Hesaplar)
 # ─────────────────────────────────────────────────────────────────
 
 def ray_sec(kapasite, hiz):
@@ -91,69 +100,41 @@ def ray_sec(kapasite, hiz):
             return r
     return ANA_RAY[-1]
 
-def kbd_hesapla(kyd, on_bosluk, cw_arkadan):
-    arka = ARKADAN_CW_PAYI if cw_arkadan else KABIN_ARKA_BOSLUGU
-    return kyd - on_bosluk - arka
-
-def ray_y_hesapla(kyd, on_bosluk, cw_arkadan):
-    kbd = kbd_hesapla(kyd, on_bosluk, cw_arkadan)
-    # Kabin on_bosluk'tan başladığı için, ortası on_bosluk + kbd/2 olur
-    return on_bosluk + kbd / 2, kbd
-
-def cw_yandan_karar(kyg, kyd, on_bosluk, ray_taban):
+def cw_yandan_karar_v2(kyg, kyd, on_bosluk, ray_y_car, dbg_car, ray_taban_car):
     """
-    Döner: dict {
-      gecerli: bool,
-      senaryo: 'cakisiyor'|'cakismiyor'|'gecersiz',
-      cw_ust, cw_alt,
-      ray_x_sag,
-      mesaj
-    }
+    Daha detaylı çakışma kontrolü ve DBG_CW hesabı.
+    Döner: dict {... , 'dbg_cw': float, 'dbg_cw_x_min': float}
     """
-    ray_y, kbd = ray_y_hesapla(kyd, on_bosluk, cw_arkadan=False)
+    cw_alt_k_y = kyd - CW_CALISMA_BOSLUGU
+    cw_ust_k_y = cw_alt_k_y - CW_Y_BOYU
 
-    if kbd <= 0:
-        return {"gecerli": False, "senaryo": "gecersiz",
-                "mesaj": "KbD ≤ 0, mekanizma kuyu derinliğini aşıyor"}
+    # Çakışma kontrolü: Ray kutusunun Y aralığı ile CW Y aralığı çakışıyor mu?
+    # Resim 3'teki gibi, ray pateni kabin patenine göre daha dışarıda.
+    ray_y_kutu_min = ray_y_car - (dbg_car / 2) - PATEN_TEKNIK_GENISLIK
+    ray_y_kutu_max = ray_y_car + (dbg_car / 2) + PATEN_TEKNIK_GENISLIK
 
-    # Adım 1: CW alt köşeye yerleştir
-    cw_alt_k = kyd - CW_CALISMA_BOSLUGU
-    cw_ust_k = cw_alt_k - CW_Y_BOYU
+    y_cakisiyor = (cw_ust_k_y < ray_y_kutu_max) and (cw_alt_k_y > ray_y_kutu_min)
 
-    if cw_ust_k < 0:
-        return {"gecerli": False, "senaryo": "gecersiz",
-                "mesaj": f"CW kuyu derinliğine sığmıyor (CW üst={cw_ust_k:.0f}mm < 0)"}
+    # CW DBG hesabı (Resim 0 ve 3'teki gibi, CW ray eksenleri arası mesafe)
+    # Varsayılan: CW'nin merkezi kuyu derinliğine göre ortalıdır.
+    cw_y_merkez = (cw_ust_k_y + cw_alt_k_y) / 2
+    # DBG_CW, CW'nin Y boyundan daha küçüktür (Resim 0'daki DBG ölçüsüne bak).
+    dbg_cw = CW_Y_BOYU - 100 # Örnek: 1380 - 100 = 1280 (Resim 0 DBG)
+    # CW ray kutusunun X'teki minimum konumu (kuyu sağ duvarından)
+    cw_ray_x_kutu_min_to_wall = CW_DUVAR_BOSLUGU + RAY_EKSEN_TOLERANS # Duvar + Tolerans
 
-    # Adım 2: Çakışma kontrolü
-    cakisiyor = (cw_ust_k <= ray_y <= cw_alt_k)
-
-    if cakisiyor:
-        # CW'yi ray_y'ye ortala
-        cw_ust = ray_y - CW_Y_BOYU / 2
-        cw_alt = ray_y + CW_Y_BOYU / 2
-        if cw_ust < 0 or cw_alt > kyd:
-            return {"gecerli": False, "senaryo": "gecersiz",
-                    "mesaj": "CW ortalandığında kuyu dışına çıkıyor"}
-        ray_x_sag = kyg - UZAK_MONTE_MESAFE - ray_taban / 2
+    if y_cakisiyor:
         return {"gecerli": True, "senaryo": "cakisiyor",
-                "cw_ust": cw_ust, "cw_alt": cw_alt,
-                "ray_x_sag": ray_x_sag,
-                "mesaj": f"Ray ana ağırlıkla çakışıyor → ray {UZAK_MONTE_MESAFE}mm uzak monte"}
+                "cw_ust": cw_ust_k_y, "cw_alt": cw_alt_k_y,
+                "dbg_cw": dbg_cw, "dbg_cw_x_min": cw_ray_x_kutu_min_to_wall,
+                "mesaj": f"Ray kabin ağırlıkla çakışıyor → teknik inceleme gerekli"}
     else:
-        ray_x_sag = kyg - CW_B_MESAFE - ray_taban / 2
         return {"gecerli": True, "senaryo": "cakismiyor",
-                "cw_ust": cw_ust_k, "cw_alt": cw_alt_k,
-                "ray_x_sag": ray_x_sag,
-                "mesaj": "Ray çakışmıyor → standart konumda"}
+                "cw_ust": cw_ust_k_y, "cw_alt": cw_alt_k_y,
+                "dbg_cw": dbg_cw, "dbg_cw_x_min": cw_ray_x_kutu_min_to_wall,
+                "mesaj": "Ray çakışmıyor"}
 
-def kbg_hesapla(ray_x_sol, ray_x_sag, ray_taban):
-    return ray_x_sag - ray_x_sol - ray_taban - YATAKLAMA_TOPLAM
-
-def tum_kombinasyonlari_hesapla(kyg, kyd, kapasite, sistem):
-    """
-    Tüm geçerli (cw_konum, mekanizma, hız) kombinasyonlarını hesapla.
-    Her biri için kabin boyutları ve ray konumlarını döndür.
-    """
+def tum_kombinasyonlari_hesapla_v2(kyg, kyd, kapasite, sistem):
     sonuclar = []
 
     cw_konumlari = []
@@ -163,111 +144,125 @@ def tum_kombinasyonlari_hesapla(kyg, kyd, kapasite, sistem):
     for cw_konum in cw_konumlari:
         for mek_adi, mek in MEKANIZMA.items():
             on_bosluk = mek["on"]
-            cw_arkadan = (cw_konum == "Arkadan")
+            # Kabin arkadaki tolerans
+            arka_bosluk = ARKADAN_CW_PAYI if cw_konum == "Arkadan" else KABIN_ARKA_BOSLUGU
+            kbd = kyd - on_bosluk - arka_bosluk
 
-            kbd = kbd_hesapla(kyd, on_bosluk, cw_arkadan)
-            if kbd <= 200:   # minimum kabin derinliği
+            if kbd <= 400:   # minimum kabin derinliği
                 continue
 
-            ray_y, _ = ray_y_hesapla(kyd, on_bosluk, cw_arkadan)
+            # Kabin ağırlık merkezi (kuyu koordinatında)
+            ray_y_car = on_bosluk + kbd / 2
 
             for hiz in sistem["hizlar"]:
                 ray = ray_sec(kapasite, hiz)
                 ray_taban = ray["taban"]
-                ray_x_sol = RAY_DUVAR_BOSLUGU + ray_taban / 2
 
+                # DBG_KABIN hesabı (Resim 3: Kabin Genişliği + 2x Tolerans)
+                # Kuyu genişliği sınırlayıcı. Ray kutuları ve toleranslar çıkarılır.
+                # Kuyu Sol Duvar -> Paten Kutusu Sol -> Kabin Sol -> Kabin Sağ -> Paten Kutusu Sağ -> Kuyu Sağ Duvar
+                # (Duvar + Tolerans + Tolerans) + KbG + (Tolerans + Tolerans + CW/Duvar)
+                
+                # Minimum sol kenardan ray eksenine (Duvar + Tolerans + Paten/2 + Eksen/2)
+                ray_x_sol_eksen = (ray_taban / 2) + KABIN_PATEN_TOLERANS + (PATEN_TEKNIK_GENISLIK/2) + RAY_EKSEN_TOLERANS
+
+                # Kuyu genişliği sınırlamasına göre maksimum KbG
+                kullanilabilir_w = kyg # Şimdilik CW tarafı hariç hesap
                 if cw_konum == "Yandan":
-                    cw = cw_yandan_karar(kyg, kyd, on_bosluk, ray_taban)
-                    if not cw["gecerli"]:
-                        continue
-                    ray_x_sag = cw["ray_x_sag"]
-                    cw_ust    = cw["cw_ust"]
-                    cw_alt    = cw["cw_alt"]
-                    cw_senaryo = cw["senaryo"]
-                    cw_mesaj   = cw["mesaj"]
-                    kbg_max = kbg_hesapla(ray_x_sol, ray_x_sag, ray_taban)
-                    kullanilabilir_w = kyg - CW_B_MESAFE  # CW tarafı hariç kullanılabilir genişlik
-                else:
-                    ray_x_sag = kyg - RAY_DUVAR_BOSLUGU - ray_taban / 2
-                    cw_ust = cw_alt = None
-                    cw_senaryo = "—"
-                    cw_mesaj   = "Arkadan CW"
-                    kbg_max = kbg_hesapla(ray_x_sol, ray_x_sag, ray_taban)
-                    kullanilabilir_w = kyg
+                    # Kuyu sağından CW ve ray kutuları payı
+                    # (Resim 3: CW_X + Toleranslar + Paten)
+                    cw_payi_x = CW_DUVAR_BOSLUGU + CW_X_BOYU + KABIN_PATEN_TOLERANS + PATEN_TEKNIK_DERINLIK # Örnek hesap
+                    kullanilabilir_w -= cw_payi_x
 
-                if kbg_max <= 200:  # minimum kabin genişliği
+                # Maksimum KbG
+                kbg_max = kullanilabilir_w - (ray_x_sol_eksen * 2) # Sol ve sağ toleranslar
+                kbg_max = round(kbg_max)
+
+                if kbg_max <= 400:  # minimum kabin genişliği
                     continue
 
                 # Kapı (LL) ve Mekanizma Genişliği (TMG) Hesabı
                 max_ll = kbg_max - 200
-                
-                # Standart adımlara göre kapı seçimi
                 if "3 panel" in mek_adi or "4 panel" in mek_adi:
                     uygun_ll_listesi = [ll for ll in [800, 900, 1000, 1100, 1200] if ll <= max_ll]
                 else:
                     uygun_ll_listesi = [ll for ll in [700, 800, 900, 1000, 1100, 1200] if ll <= max_ll]
                 
                 if not uygun_ll_listesi:
-                    continue  # Bu kuyuya standart bir kapı sığmıyor
+                    continue
                     
                 gecerli_ll_ve_tmg = []
                 for secilen_ll in uygun_ll_listesi:
-                    # TMG (Toplam Mekanizma Genişliği) formülleri
-                    if mek_adi == "Merkezi 2 panel": tmg = (2.0 * secilen_ll) + 50
-                    elif mek_adi == "Merkezi 4 panel": tmg = (1.5 * secilen_ll) + 50
-                    elif mek_adi == "Teleskopik 2 panel": tmg = (1.5 * secilen_ll) + 100
-                    elif mek_adi == "Teleskopik 3 panel": tmg = (1.33 * secilen_ll) + 100
-                    elif mek_adi == "Teleskopik 4 panel": tmg = (1.25 * secilen_ll) + 100
-                    else: tmg = (2.0 * secilen_ll) + 50
+                    tmg = (secilen_ll * mek["tmh_carpan"]) + mek["tmh_offset"]
                     
-                    # TMG kuyuya sığıyor mu? (50 mm çalışma toleransı ile)
-                    if tmg + 50 <= kullanilabilir_w:
+                    # TMG kuyuya sığıyor mu? (mekanizmanın giriş derinliğine de bakmak lazım)
+                    if tmg + 100 <= kyg: # TMG kuyu genişliğine sığıyor mu toleransla
                         gecerli_ll_ve_tmg.append((secilen_ll, tmg))
                         
                 if not gecerli_ll_ve_tmg:
                     continue
                     
-                # En büyükten başlayarak 3 adede kadar al (2 basamak altı)
+                # En büyükten başlayarak 3 adede kadar al
                 gecerli_ll_ve_tmg.sort(key=lambda x: x[0], reverse=True)
                 sinirli_ll_listesi = gecerli_ll_ve_tmg[:3]
                 
                 for secilen_ll, tmg in sinirli_ll_listesi:
+                    # Clear Opening (PLW) (Örnek: PLW = LL + bir miktar kapak payı, Resim 3: LL=DW=900, EE=EE=740, PLW=SW=1450)
+                    plw = secilen_ll + EE_OFFSET
+                    ee = secilen_ll # Şimdilik EE = LL
+
+                    # Teknik Hesaplar: DBG_KABIN, DBG_CW (Yandan ise)
+                    dbg_kabin = kbg_max + (KABIN_PATEN_TOLERANS * 2) + RAY_EKSEN_TOLERANS * 2 # Örnek DBG hesabı
+                    dbg_kabin = round(dbg_kabin)
+                    
+                    # CW teknik kararı
+                    cw_karar = {}
+                    if cw_konum == "Yandan":
+                         cw_karar = cw_yandan_karar_v2(kyg, kyd, on_bosluk, ray_y_car, dbg_kabin, ray["taban"])
+                         if not cw_karar["gecerli"]:
+                             continue
+                    else:
+                        cw_karar = {"senaryo": "—", "mesaj": "Arkadan CW", "dbg_cw": None, "dbg_cw_x_min": None}
+
                     sonuclar.append({
                         "cw_konum":   cw_konum,
                         "mek":        mek_adi,
                         "hiz":        hiz,
                         "ray_isim":   ray["isim"],
-                        "ray_taban":  ray_taban,
-                        "kbg":        round(kbg_max),
-                        "kbd":        round(kbd),
-                        "ray_x_sol":  ray_x_sol,
-                        "ray_x_sag":  ray_x_sag,
-                        "ray_y":      ray_y,
-                        "cw_ust":     cw_ust,
-                        "cw_alt":     cw_alt,
-                        "cw_senaryo": cw_senaryo,
-                        "cw_mesaj":   cw_mesaj,
+                        "ray":        ray, # Tam ray objesi
+                        "kbg":        kbg_max,
+                        "kbd":        kbd,
+                        "ray_y":      ray_y_car, # Kabin ray ekseni (Y'de kuyu merkezine göre)
+                        "cw_info":    cw_karar,
                         "on_bosluk":  on_bosluk,
                         "ll":         secilen_ll,
-                        "tmg":        round(tmg),
+                        "tmg":        tmg,
+                        "ee":         ee,
+                        "plw":        plw,
+                        "dbg_car":    dbg_kabin,
                     })
 
     return sonuclar
 
 # ─────────────────────────────────────────────────────────────────
-#  SVG ÜST GÖRÜNÜŞ
+#  SVG ÜST GÖRÜNÜŞ (Geliştirilmiş, Teknik, Dimensioned)
 # ─────────────────────────────────────────────────────────────────
 
-def svg_ciz(r, kyg, kyd, uid="0"):
-    """r: tek bir kombinasyon dict'i, uid: unique id (clipPath çakışmasını önler)"""
+def svg_ciz_v3(r, kyg, kyd, uid="0"):
+    """
+    Örnek Resim 3'ü taklit eden, teknik, dimensioned üst görünüş.
+    Component bazlı helper fonksiyonlar kullanır.
+    """
     clip_id = f"cb_{uid}"
-    SVG_W   = 760
-    MARGIN  = 55
-    ETIKET  = 120
-
+    SVG_W   = 1000 # Daha geniş, dimensionlar için
+    MARGIN  = 80 # Daha fazla pay
+    D_STYLE_TEXT_FILL = "#475569" # Dimension text color
+    D_STYLE_LINE_STROKE = "#475569" # Dimension line color
+    D_STYLE_TICK_SIZE = 6 # Dimension tick size
+    
     olcek = min(
-        (SVG_W - MARGIN - ETIKET) / kyg,
-        (SVG_W - MARGIN - ETIKET) / kyd
+        (SVG_W - MARGIN * 2) / kyg,
+        (SVG_W - MARGIN * 2) / kyd
     )
 
     def px(mm): return mm * olcek
@@ -276,251 +271,325 @@ def svg_ciz(r, kyg, kyd, uid="0"):
 
     kw = px(kyg)
     kh = px(kyd)
-    SVG_H = int(kh + MARGIN * 2 + 40)
+    SVG_H = int(kh + MARGIN * 2 + 50)
 
-    # Kabin kenarları (mm cinsinden)
-    kabin_sol  = r["ray_x_sol"] + r["ray_taban"]/2 + YATAKLAMA_TOPLAM/2
-    kabin_ust  = r["on_bosluk"]
-    kabin_sag  = kabin_sol + r["kbg"]
-    kabin_alt  = kabin_ust + r["kbd"]
+    kabin_w = px(r["kbg"])
+    kabin_h = px(r["kbd"])
+    
+    # Kabin sol üst köşesi (X,Y)
+    kb_x = sx(kyg / 2 - r["kbg"] / 2)
+    if r["cw_konum"] == "Yandan":
+        # Yandan CW varsa, kabin sola itilir
+        ray_x_left_to_wall = r["ray"]["taban"]/2 + KABIN_PATEN_TOLERANS + PATEN_TEKNIK_GENISLIK/2 + RAY_EKSEN_TOLERANS
+        kb_x = sx(ray_x_left_to_wall + KABIN_PATEN_TOLERANS + RAY_EKSEN_TOLERANS)
+        
+    kb_y = sy(r["on_bosluk"])
 
-    kbx1 = sx(kabin_sol);  kby1 = sy(kabin_ust)
-    kbx2 = sx(kabin_sag);  kby2 = sy(kabin_alt)
-    kbw  = kbx2 - kbx1;    kbh  = kby2 - kby1
+    # 1. HELPER: Draw Hoistway
+    hoistway_svg = draw_hoistway(sx(0), sy(0), kw, kh, stroke_width=2.5)
 
-    # Ray px
-    rsx  = sx(r["ray_x_sol"]); rsy  = sy(r["ray_y"])
-    rdx  = sx(r["ray_x_sag"]); rdy  = sy(r["ray_y"])
-    rr   = max(5, px(15))
+    # 2. HELPER: Draw Car Assembly (Car, Guides)
+    car_svg = draw_car_assembly(kb_x, kb_y, kabin_w, kabin_h, r["kbg"], r["kbd"], clip_id)
 
-    # CW
+    # 3. HELPER: Draw Main Rails (Cross-section detailed)
+    # Kabin ray eksenleri
+    ray_x_sol = kb_x - px(KABIN_PATEN_TOLERANS + RAY_EKSEN_TOLERANS)
+    ray_x_sag = ray_x_sol + px(r["dbg_car"])
+    ray_y = sy(r["ray_y"]) # Kuyu coordinate, but we are in sx/sy space, need to be absolute
+
+    rails_svg = draw_detailed_rails(ray_x_sol, ray_y, r["ray"]["kafa"], r["ray"]["taban"])
+    rails_svg += draw_detailed_rails(ray_x_sag, ray_y, r["ray"]["kafa"], r["ray"]["taban"])
+    
+    # Guide lines (DBG_KABIN, Kabin merkezi)
+    guide_lines_svg = f"""
+  <line x1="{ray_x_sol:.1f}" y1="{sy(0):.1f}" x2="{ray_x_sag:.1f}" y2="{sy(0):.1f}" stroke="{D_STYLE_LINE_STROKE}" stroke-width="0.5" stroke-dasharray="10 4" opacity="0.5"/>
+  <line x1="{kb_x + kabin_w/2:.1f}" y1="{sy(0):.1f}" x2="{kb_x + kabin_w/2:.1f}" y2="{sy(kyd):.1f}" stroke="{D_STYLE_LINE_STROKE}" stroke-width="0.5" stroke-dasharray="10 4" opacity="0.5"/>
+"""
+
+    # 4. HELPER: Draw Counterweight (if Yandan, detailed)
     cw_svg = ""
-    if r["cw_konum"] == "Yandan" and r["cw_ust"] is not None:
-        cx1 = sx(kyg - CW_DUVAR_BOSLUGU - CW_X_BOYU)
-        cx2 = sx(kyg - CW_DUVAR_BOSLUGU)
-        cy1 = sy(r["cw_ust"]); cy2 = sy(r["cw_alt"])
-        cw_cx = (cx1+cx2)/2; cw_cy = (cy1+cy2)/2
-        cw_svg = f"""
-  <rect x="{cx1:.1f}" y="{cy1:.1f}" width="{cx2-cx1:.1f}" height="{cy2-cy1:.1f}"
-        fill="#FEE2E2" stroke="#DC2626" stroke-width="1.5"/>
-  <text x="{cw_cx:.1f}" y="{cw_cy:.1f}" text-anchor="middle" dominant-baseline="central"
-        font-size="11" font-weight="bold" fill="#DC2626">CW</text>
-  <line x1="{cw_cx:.1f}" y1="{cy1:.1f}" x2="{cw_cx:.1f}" y2="{cy2:.1f}"
-        stroke="#DC2626" stroke-width="0.5" stroke-dasharray="3 2"/>"""
+    if r["cw_konum"] == "Yandan":
+        # CW merkezi kuyu merkezine göre
+        cw_ray_x_sol_eksen = (kyg - CW_DUVAR_BOSLUGU) - (CW_X_BOYU / 2) # X merkezi toleranssız
+        # Resim 0 ve 3'teki gibi, CW ray eksenleri arası mesafe (DBG_CW)
+        dbg_cw = CW_Y_BOYU - 100 # Örnek DBG
+        cw_ray_y_eksen_sol = r["cw_info"]["cw_ust"] + (CW_Y_BOYU - dbg_cw)/2 # Örnek Y merkezi
+        
+        # Draw CW body and rails
+        cw_svg = draw_counterweight_assembly_v3(
+            sx(cw_ray_x_sol_eksen), 
+            sy(r["cw_info"]["cw_ust"] + CW_Y_BOYU/2),
+            px(dbg_cw),
+            px(CW_X_BOYU), 
+            px(CW_Y_BOYU),
+            r["ray"]["kafa"],
+            r["ray"]["taban"]
+        )
     elif r["cw_konum"] == "Arkadan":
-        # Arkadan CW: genişlik 1380 mm (CW_Y_BOYU), derinlik 150 mm (CW_X_BOYU)
-        cw_w = CW_Y_BOYU
-        cw_h = CW_X_BOYU
-        cx1 = sx(kyg/2 - cw_w/2); cx2 = sx(kyg/2 + cw_w/2)
-        cy1 = sy(kyd - ARKADAN_CW_PAYI + (ARKADAN_CW_PAYI - cw_h)/2); cy2 = cy1 + px(cw_h)
-        cw_cx=(cx1+cx2)/2; cw_cy=(cy1+cy2)/2
-        cw_svg = f"""
-  <rect x="{cx1:.1f}" y="{cy1:.1f}" width="{cx2-cx1:.1f}" height="{cy2-cy1:.1f}"
-        fill="#FEE2E2" stroke="#DC2626" stroke-width="1.5"/>
-  <text x="{cw_cx:.1f}" y="{cw_cy:.1f}" text-anchor="middle" dominant-baseline="central"
-        font-size="11" font-weight="bold" fill="#DC2626">CW</text>"""
+        # Arkadan CW: daha geniş (CW_Y_BOYU), daha sığ (CW_X_BOYU)
+        # Merkezi kuyu genişliğine göre ortalı
+        # Merkezi kuyu derinliğine göre arkadan boslukta
+        cw_svg = draw_counterweight_assembly_v3(
+            sx(kyg / 2), 
+            sy(kyd - (ARKADAN_CW_PAYI - CW_X_BOYU)/2 - CW_CALISMA_BOSLUGU), # Örnek Y merkezi
+            px(CW_Y_BOYU - 100), # Örnek DBG
+            px(CW_Y_BOYU),
+            px(CW_X_BOYU), 
+            r["ray"]["kafa"],
+            r["ray"]["taban"],
+            vertical=False # Arkadan CW yataydır
+        )
 
-    # Tarama çizgileri (kabin içi)
-    tarama = ""
-    adim = max(12, px(100))
-    n = int((kbw + kbh) / adim) + 4
-    for i in range(-2, n):
-        x1t = kbx1 + i*adim; y1t = kby1
-        x2t = kbx1;           y2t = kby1 + i*adim
-        tarama += (f'<line x1="{x1t:.1f}" y1="{y1t:.1f}" '
-                   f'x2="{x2t:.1f}" y2="{y2t:.1f}" '
-                   f'stroke="#94A3B8" stroke-width="0.4" clip-path="url(#{clip_id})"/>')
+    # 5. HELPER: Draw Door Mechanism (integrated detailed)
+    door_svg = draw_door_mechanism_integrated_v3(
+        kb_x + kabin_w/2, 
+        kb_y, 
+        kabin_w, 
+        px(r["on_bosluk"]), 
+        r["mek"], 
+        r["kbg"], 
+        r["ll"], 
+        r["ee"], 
+        r["plw"]
+    )
 
-    # Mekanizma kutu (kapı tarafı)
-    mek_h = px(r["on_bosluk"])
-    mek_svg = ""
-    if mek_h > 4:
-        mek_svg = f"""
-  <rect x="{kbx1:.1f}" y="{MARGIN:.1f}" width="{kbw:.1f}" height="{mek_h:.1f}"
-        fill="#DBEAFE" stroke="#3B82F6" stroke-width="0.8" stroke-dasharray="4 2"/>
-  <text x="{(kbx1+kbx2)/2:.1f}" y="{MARGIN + mek_h/2:.1f}"
-        text-anchor="middle" dominant-baseline="central"
-        font-size="9" fill="#1D4ED8">{r["mek"]}</text>"""
+    # 6. HELPER: Draw Dimension Lines (Geliştirilmiş, tick marklı)
+    # Hoistway (SW/SD)
+    dim_shaft_w = draw_dimension_line_tick(sx(0), sy(0), sx(kyg), sy(0), px(-60), f"SW = {kyg}", D_STYLE_TEXT_FILL, D_STYLE_LINE_STROKE, tick_size=D_STYLE_TICK_SIZE)
+    dim_shaft_d = draw_dimension_line_tick(sx(kyg), sy(0), sx(kyg), sy(kyd), px(60), f"SD = {kyd}", D_STYLE_TEXT_FILL, D_STYLE_LINE_STROKE, tick_size=D_STYLE_TICK_SIZE)
+    
+    # Car (KbG/KbD)
+    dim_car_w = draw_dimension_line_tick(kb_x, kb_y + kabin_h, kb_x + kabin_w, kb_y + kabin_h, px(60), f"KbG = {r['kbg']}", "#059669", "#059669", tick_size=D_STYLE_TICK_SIZE)
+    dim_car_d = draw_dimension_line_tick(kb_x, kb_y, kb_x, kb_y + kabin_h, px(-60), f"KbD = {r['kbd']}", "#059669", "#059669", tick_size=D_STYLE_TICK_SIZE)
 
-    svg = f"""<svg width="100%" viewBox="0 0 {SVG_W} {SVG_H}"
-     xmlns="http://www.w3.org/2000/svg">
+    # DBG (Car / CW if Yandan)
+    dim_dbg_car = draw_dimension_line_tick(ray_x_sol, ray_y -px(50), ray_x_sag, ray_y - px(50), 0, f"DBG_K = {r['dbg_car']}", "#2563EB", "#2563EB", tick_size=D_STYLE_TICK_SIZE)
+    
+    # Clear Opening (PLW / EE) (Resim 3: PLW = SW gibi, EE = effective opening)
+    dim_ee = draw_dimension_line_tick(kb_x + kabin_w/2 - px(r['ee'])/2, kb_y - px(r['on_bosluk']), kb_x + kabin_w/2 + px(r['ee'])/2, kb_y - px(r['on_bosluk']), px(-100), f"EE = {r['ee']}", D_STYLE_TEXT_FILL, D_STYLE_LINE_STROKE, tick_size=D_STYLE_TICK_SIZE)
+
+    # Hoistway Sol ve Sağ Toleranslar (Resim 3: 470, 490)
+    dim_side_L = draw_dimension_line_tick(sx(0), sy(r['ray_y']), ray_x_sol - px(PATEN_TEKNIK_GENISLIK/2 + RAY_EKSEN_TOLERANS), sy(r['ray_y']), px(-120), f"{round( (ray_x_sol - sx(0) - px(PATEN_TEKNIK_GENISLIK/2 + RAY_EKSEN_TOLERANS) ) / olcek)}", D_STYLE_TEXT_FILL, D_STYLE_LINE_STROKE, tick_size=D_STYLE_TICK_SIZE)
+
+    svg = f"""<svg width="100%" viewBox="0 0 {SVG_W} {SVG_H}" xmlns="http://www.w3.org/2000/svg">
 <defs>
   <clipPath id="{clip_id}">
-    <rect x="{kbx1:.1f}" y="{kby1:.1f}" width="{kbw:.1f}" height="{kbh:.1f}"/>
+    <rect x="{kb_x:.1f}" y="{kb_y:.1f}" width="{kabin_w:.1f}" height="{kabin_h:.1f}"/>
   </clipPath>
 </defs>
 
-<!-- Kuyu arka plan -->
-<rect x="{MARGIN}" y="{MARGIN}" width="{kw:.1f}" height="{kh:.1f}"
-      fill="#F1F5F9" stroke="#1E293B" stroke-width="3"/>
+{hoistway_svg}
 
-<!-- Kabin arka plan -->
-<rect x="{kbx1:.1f}" y="{kby1:.1f}" width="{kbw:.1f}" height="{kbh:.1f}" fill="white"/>
-{tarama}
+{guide_lines_svg}
 
-<!-- Kabin çerçeve -->
-<rect x="{kbx1:.1f}" y="{kby1:.1f}" width="{kbw:.1f}" height="{kbh:.1f}"
-      fill="none" stroke="#1E293B" stroke-width="1.8"/>
+{car_svg}
+{door_svg}
 
-<!-- Kabin etiketi -->
-<text x="{(kbx1+kbx2)/2:.1f}" y="{(kby1+kby2)/2:.1f}"
-      text-anchor="middle" dominant-baseline="central"
-      font-size="14" font-weight="600" fill="#334155">kabin</text>
-<text x="{(kbx1+kbx2)/2:.1f}" y="{(kby1+kby2)/2+16:.1f}"
-      text-anchor="middle" dominant-baseline="central"
-      font-size="11" fill="#64748B">{r["kbg"]}×{r["kbd"]} mm</text>
-
-<!-- Mekanizma alanı -->
-{mek_svg}
-
-<!-- CW -->
 {cw_svg}
 
-<!-- Ana raylar -->
-<circle cx="{rsx:.1f}" cy="{rsy:.1f}" r="{rr:.1f}"
-        fill="white" stroke="#1D4ED8" stroke-width="2"/>
-<circle cx="{rsx:.1f}" cy="{rsy:.1f}" r="3" fill="#1D4ED8"/>
-<circle cx="{rdx:.1f}" cy="{rdy:.1f}" r="{rr:.1f}"
-        fill="white" stroke="#1D4ED8" stroke-width="2"/>
-<circle cx="{rdx:.1f}" cy="{rdy:.1f}" r="3" fill="#1D4ED8"/>
+{rails_svg}
 
-<!-- Ray ekseni (kabin ağırlık merkezi hizası) -->
-<line x1="{MARGIN:.1f}" y1="{rsy:.1f}" x2="{MARGIN+kw:.1f}" y2="{rsy:.1f}"
-      stroke="#2563EB" stroke-width="1.0" stroke-dasharray="10 4" opacity="0.75"/>
-<text x="{MARGIN+4:.1f}" y="{rsy-4:.1f}" font-size="9" fill="#2563EB">ağırlık merkezi</text>
+{dim_shaft_w}
+{dim_shaft_d}
+{dim_car_w}
+{dim_car_d}
+{dim_ee}
+{dim_dbg_car}
+{dim_side_L}
 
-<!-- ── ÖLÇÜLER ── -->
-<!-- KyG -->
-<line x1="{MARGIN:.1f}" y1="{MARGIN-20:.1f}" x2="{MARGIN+kw:.1f}" y2="{MARGIN-20:.1f}"
-      stroke="#475569" stroke-width="0.8"/>
-<line x1="{MARGIN:.1f}" y1="{MARGIN-26:.1f}" x2="{MARGIN:.1f}" y2="{MARGIN-14:.1f}"
-      stroke="#475569" stroke-width="0.8"/>
-<line x1="{MARGIN+kw:.1f}" y1="{MARGIN-26:.1f}" x2="{MARGIN+kw:.1f}" y2="{MARGIN-14:.1f}"
-      stroke="#475569" stroke-width="0.8"/>
-<text x="{MARGIN+kw/2:.1f}" y="{MARGIN-30:.1f}" text-anchor="middle"
-      font-size="11" fill="#475569">KyG = {kyg} mm</text>
-
-<!-- KyD -->
-<line x1="{MARGIN+kw+20:.1f}" y1="{MARGIN:.1f}" x2="{MARGIN+kw+20:.1f}" y2="{MARGIN+kh:.1f}"
-      stroke="#475569" stroke-width="0.8"/>
-<line x1="{MARGIN+kw+14:.1f}" y1="{MARGIN:.1f}" x2="{MARGIN+kw+26:.1f}" y2="{MARGIN:.1f}"
-      stroke="#475569" stroke-width="0.8"/>
-<line x1="{MARGIN+kw+14:.1f}" y1="{MARGIN+kh:.1f}" x2="{MARGIN+kw+26:.1f}" y2="{MARGIN+kh:.1f}"
-      stroke="#475569" stroke-width="0.8"/>
-<text x="{MARGIN+kw+30:.1f}" y="{MARGIN+kh/2:.1f}" text-anchor="start"
-      dominant-baseline="central" font-size="11" fill="#475569">KyD = {kyd} mm</text>
-
-<!-- KbG -->
-<line x1="{kbx1:.1f}" y1="{kby2+16:.1f}" x2="{kbx2:.1f}" y2="{kby2+16:.1f}"
-      stroke="#059669" stroke-width="0.8"/>
-<line x1="{kbx1:.1f}" y1="{kby2+10:.1f}" x2="{kbx1:.1f}" y2="{kby2+22:.1f}"
-      stroke="#059669" stroke-width="0.8"/>
-<line x1="{kbx2:.1f}" y1="{kby2+10:.1f}" x2="{kbx2:.1f}" y2="{kby2+22:.1f}"
-      stroke="#059669" stroke-width="0.8"/>
-<text x="{(kbx1+kbx2)/2:.1f}" y="{kby2+34:.1f}" text-anchor="middle"
-      font-size="11" fill="#059669">KbG = {r["kbg"]} mm</text>
-
-<!-- KbD -->
-<line x1="{kbx1-16:.1f}" y1="{kby1:.1f}" x2="{kbx1-16:.1f}" y2="{kby2:.1f}"
-      stroke="#059669" stroke-width="0.8"/>
-<line x1="{kbx1-22:.1f}" y1="{kby1:.1f}" x2="{kbx1-10:.1f}" y2="{kby1:.1f}"
-      stroke="#059669" stroke-width="0.8"/>
-<line x1="{kbx1-22:.1f}" y1="{kby2:.1f}" x2="{kbx1-10:.1f}" y2="{kby2:.1f}"
-      stroke="#059669" stroke-width="0.8"/>
-<text x="{kbx1-26:.1f}" y="{(kby1+kby2)/2:.1f}" text-anchor="middle"
-      dominant-baseline="central" font-size="11" fill="#059669"
-      transform="rotate(-90,{kbx1-26:.1f},{(kby1+kby2)/2:.1f})">KbD = {r["kbd"]} mm</text>
-
-<!-- Eksen etiketleri -->
-<text x="{MARGIN+4:.1f}" y="{MARGIN-4:.1f}" font-size="9" fill="#94A3B8">x →</text>
-<text x="{MARGIN-4:.1f}" y="{MARGIN+16:.1f}" font-size="9" fill="#94A3B8"
-      transform="rotate(-90,{MARGIN-4:.1f},{MARGIN+16:.1f})">y ↓</text>
 </svg>"""
 
-    # st.markdown ile render için doğrudan svg string'i dönüyoruz
     return svg, SVG_H
 
-def kapi_mekanizmasi_svg(mek_adi, kbg, ll, tmg):
+# ─────────────────────────────────────────────────────────────────
+#  SVG HELPER FONKSİYONLARI (Teknik Detaylar ve Dimensions)
+# ─────────────────────────────────────────────────────────────────
+
+def draw_hoistway(x, y, w, h, stroke_width=2.0, fill="#F1F5F9", stroke="#1E293B"):
+    return f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" fill="{fill}" stroke="{stroke}" stroke-width="{stroke_width}"/>'
+
+def draw_car_assembly(x, y, w, h, mm_w, mm_h, clip_id, fill="white", stroke="#1E293B"):
+    """Kabin gövdesi ve patenlerini çizer."""
+    # Tarama çizgileri (kabin içi)
+    tarama = ""
+    adim = max(15, w/10) # KbG'ye orantılı adımlama
+    n = int((w + h) / adim) + 4
+    for i in range(-2, n):
+        x1t = x + i*adim; y1t = y
+        x2t = x;           y2t = y + i*adim
+        tarama += (f'<line x1="{x1t:.1f}" y1="{y1t:.1f}" x2="{x2t:.1f}" y2="{y2t:.1f}" stroke="#94A3B8" stroke-width="0.3" clip-path="url(#{clip_id})"/>')
+
+    # Kabin paten kutuları (Resim 3: her bir rayın yanında bir kutu)
+    # Örnek paten kutusu boyutu (toleranslara orantılı)
+    paten_w = PATEN_TEKNIK_GENISLIK * (w / mm_w) 
+    paten_h = PATEN_TEKNIK_DERINLIK * (h / mm_h) 
+    
+    # Paten merkezi, tolerans ve eksen toleransından hesaplanır
+    # Sol paten
+    paten_L_x = x - paten_w - (KABIN_PATEN_TOLERANS * (w / mm_w))
+    # Sağ paten
+    paten_R_x = x + w + (KABIN_PATEN_TOLERANS * (w / mm_w))
+    
+    # Paten Y merkezi (Resim 3: paten kutusu kabin derinliğine göre daha geride)
+    # Eksen toleransına bakarak hesap
+    paten_y = y + h/2 - (paten_h/2) # Paten merkezi Y'de ortalı (Resim 3'ten çıkarım)
+
+    paten_svg = f"""
+  <rect x="{paten_L_x:.1f}" y="{paten_y:.1f}" width="{paten_w:.1f}" height="{paten_h:.1f}" fill="#E2E8F0" stroke="{stroke}" stroke-width="0.8"/>
+  <rect x="{paten_R_x:.1f}" y="{paten_y:.1f}" width="{paten_w:.1f}" height="{paten_h:.1f}" fill="#E2E8F0" stroke="{stroke}" stroke-width="0.8"/>
+"""
+
+    return f"""
+<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" fill="{fill}"/>
+{tarama}
+<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" fill="none" stroke="{stroke}" stroke-width="1.8"/>
+{paten_svg}
+<text x="{x + w/2:.1f}" y="{y + h/2:.1f}" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="600" fill="#334155">Kabin</text>
+<text x="{x + w/2:.1f}" y="{y + h/2 + 16:.1f}" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#64748B">{mm_w}×{mm_h} mm</text>
+"""
+
+def draw_detailed_rails(x, y, kafa_mm, taban_mm, yukseklik_mm=80, stroke="#1D4ED8", fill="white"):
+    """Rayın teknik kesitini çizer (circle değil). x,y: Eksen."""
+    olcek_r = PATEN_TEKNIK_GENISLIK / 140 # Örnek paten toleransına göre ray ölçeği
+    kafa_w = kafa_mm * olcek_r
+    taban_w = taban_mm * olcek_r
+    yuk_h = yukseklik_mm * olcek_r
+    
+    return f"""
+  <line x1="{x - taban_w/2:.1f}" y1="{y:.1f}" x2="{x + taban_w/2:.1f}" y2="{y:.1f}" stroke="{stroke}" stroke-width="2.5"/>
+  <line x1="{x:.1f}" y1="{y:.1f}" x2="{x:.1f}" y2="{y - yuk_h:.1f}" stroke="{stroke}" stroke-width="2.5"/>
+  <rect x="{x - kafa_w/2:.1f}" y="{y - yuk_h - kafa_w/2:.1f}" width="{kafa_w:.1f}" height="{kafa_w:.1f}" fill="{stroke}" stroke="none"/>
+"""
+
+def draw_counterweight_assembly_v3(cw_ray_x_sol_eksen_px, cw_y_merkez_px, dbg_cw_px, taban_cw_w_px, taban_cw_h_px, kafa_mm, taban_mm, vertical=True, fill="#FEE2E2", stroke="#DC2626"):
     """
-    Kabin genişliğine (kbg) orantılı olarak, şematik kapı mekanizması çizer.
-    Sadece kapalı durumdaki panelleri gösterir.
-    """
-    SVG_W = 640
-    SVG_H = 180
-    MARGIN = 20
-    
-    olcek = (SVG_W - 2 * MARGIN) / kbg
-    def px(mm): return mm * olcek
-    
-    # Kasa
-    kabin_w_px = px(kbg)
-    kabin_x = MARGIN + (SVG_W - 2*MARGIN - kabin_w_px)/2
-    kasa_w_px = px(tmg)
-    kasa_x = kabin_x + (kabin_w_px - kasa_w_px)/2
-    
-    svg_kasa = f"""
-    <!-- Kasa / Kılavuz -->
-    <rect x="{kasa_x:.1f}" y="40" width="{kasa_w_px:.1f}" height="70" fill="#F8FAFC" stroke="#94A3B8" stroke-width="1.5"/>
-    <line x1="{kasa_x:.1f}" y1="75" x2="{kasa_x + kasa_w_px:.1f}" y2="75" stroke="#CBD5E1" stroke-width="1" stroke-dasharray="4 2"/>
-    <text x="{SVG_W/2:.1f}" y="20" text-anchor="middle" font-size="14" font-weight="bold" fill="#1E293B">{mek_adi} (LL: {ll} mm, TMG: {tmg} mm)</text>
-    <text x="{SVG_W/2:.1f}" y="135" text-anchor="middle" font-size="12" fill="#64748B">Kabin Genişliği (KbG): {kbg} mm</text>
+    Detailed CW assembly: Body, weights, and detailed rails.
+    x,y_merkez: CW ray eksenleri merkezi. dbg_cw: Eksenler arası mesafe. taban_cw_w, taban_cw_h: CW taban boyutu. vertical: Yandan CW dikey durur.
     """
     
+    # CW Body and Rails based on verticality
+    body_svg = ""
+    rails_svg = ""
+    
+    if vertical:
+        # CW Body is vertical (for Yandan CW)
+        body_svg = f"""
+  <rect x="{cw_ray_x_sol_eksen_px - taban_cw_w_px/2:.1f}" y="{cw_y_merkez_px - taban_cw_h_px/2:.1f}" width="{taban_cw_w_px:.1f}" height="{taban_cw_h_px:.1f}" fill="{fill}" stroke="{stroke}" stroke-width="1.5"/>
+  <text x="{cw_ray_x_sol_eksen_px:.1f}" y="{cw_y_merkez_px:.1f}" text-anchor="middle" dominant-baseline="central" font-size="11" font-weight="bold" fill="{stroke}">CW</text>
+  <line x1="{cw_ray_x_sol_eksen_px:.1f}" y1="{cw_y_merkez_px - taban_cw_h_px/2:.1f}" x2="{cw_ray_x_sol_eksen_px:.1f}" y2="{cw_y_merkez_px + taban_cw_h_px/2:.1f}" stroke="{stroke}" stroke-width="0.5" stroke-dasharray="3 2"/>
+"""
+        # CW rails based on DBG_CW and body centre
+        rails_svg = draw_detailed_rails(cw_ray_x_sol_eksen_px, cw_y_merkez_px - dbg_cw_px/2, kafa_mm, taban_mm, yukseklik_mm=50, stroke=stroke)
+        rails_svg += draw_detailed_rails(cw_ray_x_sol_eksen_px, cw_y_merkez_px + dbg_cw_px/2, kafa_mm, taban_mm, yukseklik_mm=50, stroke=stroke)
+
+    else:
+        # CW Body is horizontal (for Arkadan CW)
+        body_svg = f"""
+  <rect x="{cw_ray_x_sol_eksen_px - taban_cw_h_px/2:.1f}" y="{cw_y_merkez_px - taban_cw_w_px/2:.1f}" width="{taban_cw_h_px:.1f}" height="{taban_cw_w_px:.1f}" fill="{fill}" stroke="{stroke}" stroke-width="1.5"/>
+  <text x="{cw_ray_x_sol_eksen_px:.1f}" y="{cw_y_merkez_px:.1f}" text-anchor="middle" dominant-baseline="central" font-size="11" font-weight="bold" fill="{stroke}">CW</text>
+"""
+        # CW rails based on DBG_CW (X ekseninde fark) and body centre
+        rails_svg = draw_detailed_rails(cw_ray_x_sol_eksen_px - dbg_cw_px/2, cw_y_merkez_px, kafa_mm, taban_mm, yukseklik_mm=50, stroke=stroke)
+        rails_svg += draw_detailed_rails(cw_ray_x_sol_eksen_px + dbg_cw_px/2, cw_y_merkez_px, kafa_mm, taban_mm, yukseklik_mm=50, stroke=stroke)
+
+    return f"""
+{body_svg}
+{rails_svg}
+"""
+
+def draw_door_mechanism_integrated_v3(car_w_px_centre, car_y_px, car_w_px, on_bosluk_px, mek_adi, kbg, ll, ee, plw, stroke="#3B82F6", fill="#DBEAFE"):
+    """Kabin gövdesine entegre, detaylı kapı mekanizmasını çizer (Resim 3: Teleskopik 2 panel gibi)."""
+    
+    # Mechanism and Door Panel svg
+    mek_svg = ""
     panel_svg = ""
-    panel_y = 48
-    panel_h = 10
-    panel_bosluk = 4
     
-    merkez_x = SVG_W / 2
-    giris_w_px = px(ll)
+    # 1. HELPER: Draw Panel Mechanism Box
+    mek_svg = draw_hoistway(
+        car_w_px_centre - car_w_px/2, 
+        car_y_px - on_bosluk_px, 
+        car_w_px, 
+        on_bosluk_px, 
+        stroke_width=0.8, fill=fill, stroke=stroke)
+    mek_svg += f'<text x="{car_w_px_centre:.1f}" y="{car_y_px - on_bosluk_px/2:.1f}" text-anchor="middle" dominant-baseline="central" font-size="9" fill="#1D4ED8">{mek_adi}</text>'
+
+    # 2. HELPER: Draw Door Panels and Entrance Opening (EE / PLW)
+    ee_px = car_w_px * (ee / kbg) 
+    plw_px = car_w_px * (plw / kbg)
+    panel_y = car_y_px - on_bosluk_px + px(KAPI_GIRIS_DERINLIK) - px(10) # Örnek Y konumu mekanizma kutusu içinde
     
+    # Entrance/Effective Opening Lines (Resim 3: EE toleransı)
+    ee_start_px = car_w_px_centre - ee_px/2
+    ee_end_px = car_w_px_centre + ee_px/2
+
+    panel_svg = f"""
+  <line x1="{ee_start_px:.1f}" y1="{panel_y - px(10):.1f}" x2="{ee_start_px:.1f}" y2="{panel_y + px(10):.1f}" stroke="#CBD5E1" stroke-width="1.0" stroke-dasharray="4 2"/>
+  <line x1="{ee_end_px:.1f}" y1="{panel_y - px(10):.1f}" x2="{ee_end_px:.1f}" y2="{panel_y + px(10):.1f}" stroke="#CBD5E1" stroke-width="1.0" stroke-dasharray="4 2"/>
+"""
+
     if mek_adi == "Merkezi 2 panel":
-        p_w = giris_w_px / 2 + 5
-        panel_svg += f'<rect x="{merkez_x - p_w:.1f}" y="{panel_y:.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
-        panel_svg += f'<rect x="{merkez_x:.1f}" y="{panel_y:.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
-    
-    elif mek_adi == "Merkezi 4 panel":
-        p_w = giris_w_px / 4 + 5
-        panel_svg += f'<rect x="{merkez_x - p_w:.1f}" y="{panel_y:.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
-        panel_svg += f'<rect x="{merkez_x:.1f}" y="{panel_y:.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
-        panel_svg += f'<rect x="{merkez_x - 2*p_w + 2:.1f}" y="{panel_y + panel_h + panel_bosluk:.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
-        panel_svg += f'<rect x="{merkez_x + p_w - 2:.1f}" y="{panel_y + panel_h + panel_bosluk:.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
-        
+        # Merkezi 2 panel: 2 panel ortada çakışır
+        panel_w = ee_px / 2 + px(5) # Panel genişliği overlappingtoleransıyla
+        panel_svg += f'<rect x="{car_w_px_centre - panel_w:.1f}" y="{panel_y:.1f}" width="{panel_w:.1f}" height="{px(10):.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
+        panel_svg += f'<rect x="{car_w_px_centre:.1f}" y="{panel_y:.1f}" width="{panel_w:.1f}" height="{px(10):.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
+
     elif mek_adi == "Teleskopik 2 panel":
-        p_w = giris_w_px / 2 + 5
-        sol_baslangic = merkez_x - giris_w_px / 2
-        panel_svg += f'<rect x="{sol_baslangic:.1f}" y="{panel_y:.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
-        panel_svg += f'<rect x="{sol_baslangic + p_w - 2:.1f}" y="{panel_y + panel_h + panel_bosluk:.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
+        # Teleskopik 2 panel (Resim 3 taklidi): 2 panel bir kenarda çakışır, ee_px'den daha geniştirler
+        # Paneller plw_px toleransından hesaplanır
+        panel_w = ee_px / 2 + px(10) # Panel genişliği toleransla
+        sol_baslangic = car_w_px_centre - plw_px / 2
+        # Sol kenarda çakışan 2 panel
+        panel_svg += f'<rect x="{sol_baslangic:.1f}" y="{panel_y:.1f}" width="{panel_w:.1f}" height="{px(10):.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
+        panel_svg += f'<rect x="{sol_baslangic + panel_w - px(2):.1f}" y="{panel_y + px(10) + px(4):.1f}" width="{panel_w:.1f}" height="{px(10):.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
 
-    elif mek_adi == "Teleskopik 3 panel":
-        p_w = giris_w_px / 3 + 5
-        sol_baslangic = merkez_x - giris_w_px / 2
-        for i in range(3):
-            panel_svg += f'<rect x="{sol_baslangic + i*(p_w-2):.1f}" y="{panel_y + i*(panel_h + panel_bosluk):.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
+    else:
+        # Şimdilik diğerleri basit tarama
+        panel_svg += f'<line x1="{ee_start_px:.1f}" y1="{panel_y:.1f}" x2="{ee_end_px:.1f}" y2="{panel_y:.1f}" stroke="#DC2626" stroke-width="2.0" stroke-dasharray="5 5" opacity="0.5"/>'
 
-    elif mek_adi == "Teleskopik 4 panel":
-        p_w = giris_w_px / 4 + 5
-        sol_baslangic = merkez_x - giris_w_px / 2
-        for i in range(4):
-            panel_svg += f'<rect x="{sol_baslangic + i*(p_w-2):.1f}" y="{panel_y + i*(panel_h + panel_bosluk):.1f}" width="{p_w:.1f}" height="{panel_h:.1f}" fill="#E2E8F0" stroke="#475569" stroke-width="1"/>'
-
-    svg_html = f"""<svg width="100%" viewBox="0 0 {SVG_W} {SVG_H}" xmlns="http://www.w3.org/2000/svg">
-{svg_kasa}
+    return f"""
+{mek_svg}
 {panel_svg}
-</svg>"""
-    return svg_html, SVG_H
+"""
+
+def draw_dimension_line_tick(x1, y1, x2, y2, offset, label, text_fill, stroke, horizontal=True, tick_size=6):
+    """Geliştirilmiş, tick marklı (arrows değil) dimension line."""
+    
+    # Dimension line points based on offset and direction
+    lx1 = x1; ly1 = y1
+    lx2 = x2; ly2 = y2
+    if offset != 0:
+        if horizontal:
+            ly1 += offset; ly2 += offset
+        else:
+            lx1 += offset; lx2 += offset
+            
+    # Tick mark points (tick mark size is fixed in px)
+    tick1_start = (lx1 - tick_size/2, ly1 + tick_size/2) if horizontal else (lx1 - tick_size/2, ly1 - tick_size/2)
+    tick1_end = (lx1 + tick_size/2, ly1 - tick_size/2) if horizontal else (lx1 + tick_size/2, ly1 + tick_size/2)
+    
+    tick2_start = (lx2 - tick_size/2, ly2 + tick_size/2) if horizontal else (lx2 - tick_size/2, ly2 - tick_size/2)
+    tick2_end = (lx2 + tick_size/2, ly2 - tick_size/2) if horizontal else (lx2 + tick_size/2, ly2 + tick_size/2)
+
+    return f"""
+  <line x1="{x1:.1f}" y1="{y1:.1f}" x2="{lx1:.1f}" y2="{ly1:.1f}" stroke="{stroke}" stroke-width="0.5" opacity="0.5"/>
+  <line x1="{x2:.1f}" y1="{y2:.1f}" x2="{lx2:.1f}" y2="{ly2:.1f}" stroke="{stroke}" stroke-width="0.5" opacity="0.5"/>
+  <line x1="{lx1:.1f}" y1="{ly1:.1f}" x2="{lx2:.1f}" y2="{ly2:.1f}" stroke="{stroke}" stroke-width="0.8"/>
+  <line x1="{tick1_start[0]:.1f}" y1="{tick1_start[1]:.1f}" x2="{tick1_end[0]:.1f}" y2="{tick1_end[1]:.1f}" stroke="{stroke}" stroke-width="0.8"/>
+  <line x1="{tick2_start[0]:.1f}" y1="{tick2_start[1]:.1f}" x2="{tick2_end[0]:.1f}" y2="{tick2_end[1]:.1f}" stroke="{stroke}" stroke-width="0.8"/>
+  <text x="{(lx1+lx2)/2:.1f}" y="{(ly1+ly2)/2:.1f}" text-anchor="middle" dominant-baseline="central" font-size="11" fill="{text_fill}" transform="rotate({-90 if not horizontal else 0}, {(lx1+lx2)/2:.1f}, {(ly1+ly2)/2:.1f})">{label}</text>
+"""
 
 # ─────────────────────────────────────────────────────────────────
-#  STREAMLIT ARAYÜZÜ
+#  MAIN STREAMLIT UI (Geliştirilmiş, Teknik Metrics)
 # ─────────────────────────────────────────────────────────────────
-st.title("🛗 Asansör Sistem Seçici v2.0")
-st.caption("EN 81-20/50 · 2014/33/EU · Ön değerlendirme aracı")
+st.title("🛗 Asansör Teknik Plan Seçici v3.0")
+st.caption("EN 81-20/50 · 2014/33/EU · Ön değerlendirme ve Teknik Plan aracı")
 
-# ── Sidebar ──────────────────────────────────────────────────────
+# ── Sidebar (Kuyu ve Proje Parametreleri) ─────────────────────────
 with st.sidebar:
-    st.header("📐 Kuyu Ölçüleri")
-    kyg = st.number_input("Kuyu Genişliği KyG (mm)", 800, 5000, 2000, 50)
-    kyd = st.number_input("Kuyu Derinliği KyD (mm)", 800, 6000, 2200, 50)
+    st.header("📐 Kuyu Ölçüleri (Shaft)")
+    kyg = st.number_input("Kuyu Genişliği KyG-SW (mm)", 800, 5000, 2000, 50)
+    kyd = st.number_input("Kuyu Derinliği KyD-SD (mm)", 800, 6000, 2200, 50)
     pit = st.number_input("Kuyu Dibi — Pit (mm)",    200, 3000, 1600, 50)
     kuyu_boy = st.number_input("Kuyu Toplam Boyu (mm)", 3000, 200000, 30000, 500)
 
@@ -541,14 +610,14 @@ mr_var = None
 if "yok" in mr_sec:  mr_var = False
 elif "var" in mr_sec: mr_var = True
 
-# ── Hesapla ──────────────────────────────────────────────────────
+# ── Hesapla (Hesaplanan ve Kontrol Edilen Parametreler) ────────────
 seyir    = (kat - 1) * KAT_YUKSEKLIGI
 overhead = kuyu_boy - pit - seyir
 
-# Metrik satırı
+# Metrik satırı (Geliştirilmiş, Teknik Kısaltmalar)
 c1,c2,c3,c4 = st.columns(4)
 c1.metric("Seyir Yüksekliği", f"{seyir/1000:.1f} m")
-c2.metric("Overhead (Hesaplanan)", f"{overhead} mm",
+c2.metric("Overhead (Hesp.)", f"{overhead} mm",
           delta="✓" if overhead > 0 else "✗ Yetersiz",
           delta_color="normal" if overhead > 0 else "inverse")
 c3.metric("Pit", f"{pit} mm")
@@ -573,44 +642,47 @@ if not uygun:
 
 st.divider()
 
-# ── Sistem sekmeleri ─────────────────────────────────────────────
+# ── Sistem sekmeleri (Hesaplanan Kombinasyonlar) ─────────────────
 tabs = st.tabs([s["ad"] for s in uygun])
 
 for tab, sistem in zip(tabs, uygun):
     with tab:
 
-        # Tüm kombinasyonları hesapla
-        kombinasyonlar = tum_kombinasyonlari_hesapla(kyg, kyd, kapasite, sistem)
+        # Tüm kombinasyonları hesapla (Geliştirilmiş V2)
+        kombinasyonlar = tum_kombinasyonlari_hesapla_v2(kyg, kyd, kapasite, sistem)
 
         if not kombinasyonlar:
             st.warning("Bu sistem için geçerli kombinasyon bulunamadı.")
             continue
 
         # ── Sonuç tablosu ────────────────────────────────────────
-        st.markdown("#### 📋 Tüm Geçerli Kombinasyonlar")
+        st.markdown("#### 📋 Tüm Geçerli Teknik Kombinasyonlar")
 
         tablo = []
         for i, r in enumerate(kombinasyonlar):
             tablo.append({
                 "#":           i+1,
-                "CW Konum":    r["cw_konum"],
+                "CW":          r["cw_konum"],
                 "Mekanizma":   r["mek"],
-                "Kapı (LL)":   f"{r['ll']} mm",
+                "Kapı-DW (mm)":f"{r['ll']}",
+                "EE (mm)":     f"{r['ee']}",
+                "PLW (mm)":    f"{r['plw']}",
                 "Hız (m/s)":   r["hiz"],
                 "Ana Ray":     r["ray_isim"],
-                "KbG (mm)":    r["kbg"],
-                "KbD (mm)":    r["kbd"],
-                "CW Durum":    r["cw_senaryo"],
+                "KbG-W (mm)":  r["kbg"],
+                "KbD-D (mm)":  r["kbd"],
+                "DBG_K (mm)":  r["dbg_car"],
+                "CW Durum":    r["cw_info"]["senaryo"],
             })
 
         st.dataframe(tablo, use_container_width=True, hide_index=True)
 
         # ── Kombinasyon seç & çizim ──────────────────────────────
-        st.markdown("#### 📐 Üstten Görünüş Çizimi")
+        st.markdown("#### 📐 Teknik Üst Görünüş Çizimi (Dimensioned Plan)")
 
         secenekler = [
-            f"#{i+1} | {r['cw_konum']} CW | {r['mek']} | Kapı LL={r['ll']}mm | {r['hiz']} m/s | "
-            f"KbG={r['kbg']}mm KbD={r['kbd']}mm"
+            f"#{i+1} | {r['cw_konum']} CW | {r['mek']} | DW={r['ll']}mm EE={r['ee']}mm | "
+            f"KbG={r['kbg']}mm KbD={r['kbd']}mm DBG_K={r['dbg_car']}mm"
             for i, r in enumerate(kombinasyonlar)
         ]
 
@@ -625,31 +697,26 @@ for tab, sistem in zip(tabs, uygun):
 
         # CW mesajı
         if r["cw_konum"] == "Yandan":
-            if r["cw_senaryo"] == "cakisiyor":
-                st.info(f"ℹ️ {r['cw_mesaj']}")
+            if r["cw_info"]["senaryo"] == "cakisiyor":
+                st.info(f"ℹ️ {r['cw_info']['mesaj']}")
             else:
-                st.success(f"✅ {r['cw_mesaj']}")
+                st.success(f"✅ {r['cw_info']['mesaj']}")
 
-        # SVG çizim — uid ile clipPath çakışmasını önle
+        # SVG çizim (Geliştirilmiş V3)
         uid = f"{sistem['id']}_{secim_idx}"
-        svg_html, svg_h = svg_ciz(r, kyg, kyd, uid=uid)
+        svg_html, svg_h = svg_ciz_v3(r, kyg, kyd, uid=uid)
         svg_cleaned = svg_html.replace("\n", " ")
         st.markdown(f'<div align="center">{svg_cleaned}</div>', unsafe_allow_html=True)
 
-        # Kapı mekanizması SVG'sini çizdir
-        st.markdown("#### 🚪 Kapı Mekanizması — Üstten Görünüş")
-        kapi_html, kapi_h = kapi_mekanizmasi_svg(r["mek"], r["kbg"], r["ll"], r["tmg"])
-        kapi_cleaned = kapi_html.replace("\n", " ")
-        st.markdown(f'<div align="center">{kapi_cleaned}</div>', unsafe_allow_html=True)
+        # Teknik Metrics Satırı (Özet Teknik Bilgi)
+        col1, col2, col3, col4, col5 = st.columns(5)
+        col1.metric("Kabin-W (KbG)", f"{r['kbg']} mm")
+        col2.metric("Kabin-D (KbD)", f"{r['kbd']} mm")
+        col3.metric("DBG_KABIN (K)", f"{r['dbg_car']} mm")
+        col4.metric("Giriş EE", f"{r['ee']} mm")
+        col5.metric("PLW Tolerans", f"{r['plw']} mm")
 
-        # Özet kutucuklar
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Kabin Genişliği (KbG)", f"{r['kbg']} mm")
-        col2.metric("Net Kapı (LL)", f"{r['ll']} mm")
-        col3.metric("Ana Ray", r["ray_isim"])
-        col4.metric("Hız", f"{r['hiz']} m/s")
-
-        # ── Sistem detayları ─────────────────────────────────────
+        # ── Sistem detayları (Avantajlar/Dezavantajlar) ─────────────
         with st.expander("ℹ️ Sistem Bilgileri"):
             ca, cb = st.columns(2)
             with ca:
@@ -660,12 +727,10 @@ for tab, sistem in zip(tabs, uygun):
                 st.markdown("**⚠ Dikkat**")
                 for dez in sistem["dezavantajlar"]:
                     st.markdown(f"- {dez}")
-            st.caption(f"Pit min: {sistem['pit_min']}mm | "
-                      f"Overhead min: {sistem['oh_min']}mm | "
-                      f"Maks kat: {sistem['kat_max']}")
+            st.caption(f"Pit min: {sistem['pit_min']}mm | Overhead min: {sistem['oh_min']}mm | Maks kat: {sistem['kat_max']}")
 
 # ── Notlar ───────────────────────────────────────────────────────
 st.divider()
-st.caption("⚠ Ön değerlendirme aracıdır. Kesin seçim için lisanslı mühendis onayı gerekir.")
+st.caption("⚠ Ön değerlendirme ve Teknik Plan aracıdır. Kesin seçim için lisanslı mühendis onayı gerekir.")
 if deprem: st.warning("⚠ Deprem bölgesi: EN 81-77 sismik gereksinimlerini inceleyin.")
 if yangin: st.warning("⚠ İtfaiyeci asansörü: EN 81-72 kapsamında ayrı kuyu gerekir.")
