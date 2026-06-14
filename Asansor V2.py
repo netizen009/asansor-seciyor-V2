@@ -7,10 +7,10 @@ st.set_page_config(page_title="Asansör Sistem Seçici v2", page_icon="🛗", la
 #  SABİT DEĞERLER
 # ─────────────────────────────────────────────────────────────────
 KAT_YUKSEKLIGI     = 3000
-YATAKLAMA_TOPLAM   = 200
+YATAKLAMA_TOPLAM   = 150
 RAY_DUVAR_BOSLUGU  = 100
 KABIN_ARKA_BOSLUGU = 50
-ARKADAN_CW_PAYI    = 320
+ARKADAN_CW_PAYI    = 300
 CW_Y_BOYU          = 1380
 CW_X_BOYU          = 150
 CW_DUVAR_BOSLUGU   = 50
@@ -258,6 +258,86 @@ def tum_kombinasyonlari_hesapla(kyg, kyd, kapasite, sistem):
 #  SVG ÜST GÖRÜNÜŞ
 # ─────────────────────────────────────────────────────────────────
 
+def _mek_paneller(mek_adi, ll_px, merkez_x, y_ust, y_alt, px_fn):
+    """Mekanizma panellerini üstten görünüş olarak çizer."""
+    mek_h       = y_alt - y_ust
+    p_k         = max(5, mek_h * 0.18)   # panel kalınlığı px
+    bosluk      = max(2, mek_h * 0.06)
+    ray_y       = y_ust + mek_h * 0.25   # kat kılavuz ray y
+    ray_y2      = y_alt - mek_h * 0.25   # kabin kılavuz ray y
+    uzanti      = px_fn(60)
+    svg = ""
+
+    # ── Ortak: kılavuz raylar ──────────────────────────────────
+    for ry in [ray_y, ray_y2]:
+        svg += (f'<line x1="{merkez_x-ll_px/2-uzanti:.1f}" y1="{ry:.1f}" '
+                f'x2="{merkez_x+ll_px/2+uzanti:.1f}" y2="{ry:.1f}" '
+                f'stroke="#1E293B" stroke-width="1.8"/>')
+
+    def panel_ciz(x0, genislik, y_merkez, dolu_renk="#E8EEF4"):
+        """Tek bir panel + iç lama çizgileri"""
+        s = (f'<rect x="{x0:.1f}" y="{y_merkez-p_k/2:.1f}" '
+             f'width="{genislik:.1f}" height="{p_k:.1f}" '
+             f'fill="{dolu_renk}" stroke="#334155" stroke-width="1.1"/>')
+        for k in range(1, 5):
+            lx = x0 + genislik * k / 5
+            s += (f'<line x1="{lx:.1f}" y1="{y_merkez-p_k/2:.1f}" '
+                  f'x2="{lx:.1f}" y2="{y_merkez+p_k/2:.1f}" '
+                  f'stroke="#94A3B8" stroke-width="0.4"/>')
+        return s
+
+    def kasa(x, y, h, w=None):
+        w = w or max(4, ll_px * 0.04)
+        return (f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" '
+                f'fill="#CBD5E1" stroke="#475569" stroke-width="1"/>')
+
+    if mek_adi == "Merkezi 2 panel":
+        p_w = ll_px / 2
+        x_sol = merkez_x - ll_px / 2
+        x_sag = merkez_x
+        for xp in [x_sol, x_sag]:
+            svg += panel_ciz(xp, p_w, ray_y)
+            svg += panel_ciz(xp, p_w, ray_y2)
+        svg += kasa(x_sol - max(4, ll_px*0.04), y_ust, mek_h)
+        svg += kasa(merkez_x + ll_px/2, y_ust, mek_h)
+
+    elif mek_adi == "Merkezi 4 panel":
+        p_w  = ll_px / 2
+        p_w2 = ll_px * 0.36
+        ofset = p_k * 0.8
+        for sign in [-1, 1]:
+            xd = merkez_x - ll_px/2 if sign == -1 else merkez_x
+            xi = (merkez_x - p_w2) if sign == -1 else (merkez_x + p_w - p_w2)
+            svg += panel_ciz(xd, p_w,  ray_y)
+            svg += panel_ciz(xi, p_w2, ray_y + ofset, "#D1DCE8")
+            svg += panel_ciz(xd, p_w,  ray_y2)
+            svg += panel_ciz(xi, p_w2, ray_y2 - ofset, "#D1DCE8")
+        svg += kasa(merkez_x - ll_px/2 - max(4,ll_px*0.04), y_ust, mek_h)
+        svg += kasa(merkez_x + ll_px/2, y_ust, mek_h)
+
+    elif mek_adi in ("Teleskopik 2 panel", "Teleskopik 3 panel", "Teleskopik 4 panel"):
+        n   = {"Teleskopik 2 panel": 2,
+               "Teleskopik 3 panel": 3,
+               "Teleskopik 4 panel": 4}[mek_adi]
+        x0  = merkez_x - ll_px / 2
+        renkler = ["#E8EEF4", "#D1DCE8", "#BDD0E0", "#A9C2D2"]
+        for i in range(n):
+            p_w   = ll_px * (n - i) / n
+            y_ofs = i * (p_k + bosluk)
+            renk  = renkler[min(i, len(renkler)-1)]
+            svg  += panel_ciz(x0, p_w, ray_y  + y_ofs, renk)
+            svg  += panel_ciz(x0, p_w, ray_y2 - y_ofs, renk)
+        svg += kasa(x0 - max(4, ll_px*0.04), y_ust, mek_h)
+        svg += kasa(x0 + ll_px, y_ust, mek_h)
+
+    # Dış sınır (kesik çizgi)
+    kasa_w = max(4, ll_px * 0.04)
+    svg += (f'<rect x="{merkez_x-ll_px/2-kasa_w:.1f}" y="{y_ust:.1f}" '
+            f'width="{ll_px+kasa_w*2:.1f}" height="{mek_h:.1f}" '
+            f'fill="none" stroke="#3B82F6" stroke-width="0.7" stroke-dasharray="5 3"/>')
+    return svg
+
+
 def svg_ciz(r, kyg, kyd, uid="0"):
     """r: tek bir kombinasyon dict'i, uid: unique id (clipPath çakışmasını önler)"""
     clip_id = f"cb_{uid}"
@@ -331,16 +411,27 @@ def svg_ciz(r, kyg, kyd, uid="0"):
                    f'x2="{x2t:.1f}" y2="{y2t:.1f}" '
                    f'stroke="#94A3B8" stroke-width="0.4" clip-path="url(#{clip_id})"/>')
 
-    # Mekanizma kutu (kapı tarafı)
-    mek_h = px(r["on_bosluk"])
-    mek_svg = ""
-    if mek_h > 4:
-        mek_svg = f"""
-  <rect x="{kbx1:.1f}" y="{MARGIN:.1f}" width="{kbw:.1f}" height="{mek_h:.1f}"
-        fill="#DBEAFE" stroke="#3B82F6" stroke-width="0.8" stroke-dasharray="4 2"/>
-  <text x="{(kbx1+kbx2)/2:.1f}" y="{MARGIN + mek_h/2:.1f}"
-        text-anchor="middle" dominant-baseline="central"
-        font-size="9" fill="#1D4ED8">{r["mek"]}</text>"""
+    # ── Ray değişkenleri (dbg_y bunlara bağımlı, önce tanımlanmalı) ──
+    kabin_merkez_x = kbx1 + kbw / 2
+    dbg_mm  = r["ray_x_sag"] - r["ray_x_sol"]
+    dbg_y   = rsy + rr + 14
+    dbg_svg = (
+        f'<line x1="{rsx:.1f}" y1="{dbg_y:.1f}" x2="{rdx:.1f}" y2="{dbg_y:.1f}" stroke="#1D4ED8" stroke-width="0.7"/>'
+        f'<line x1="{rsx:.1f}" y1="{dbg_y-4:.1f}" x2="{rsx:.1f}" y2="{dbg_y+4:.1f}" stroke="#1D4ED8" stroke-width="0.7"/>'
+        f'<line x1="{rdx:.1f}" y1="{dbg_y-4:.1f}" x2="{rdx:.1f}" y2="{dbg_y+4:.1f}" stroke="#1D4ED8" stroke-width="0.7"/>'
+        f'<polygon points="{rsx:.1f},{dbg_y:.1f} {rsx+6:.1f},{dbg_y-2.5:.1f} {rsx+6:.1f},{dbg_y+2.5:.1f}" fill="#1D4ED8"/>'
+        f'<polygon points="{rdx:.1f},{dbg_y:.1f} {rdx-6:.1f},{dbg_y-2.5:.1f} {rdx-6:.1f},{dbg_y+2.5:.1f}" fill="#1D4ED8"/>'
+        f'<text x="{(rsx+rdx)/2:.1f}" y="{dbg_y+12:.1f}" text-anchor="middle" '
+        f'font-size="9" fill="#1D4ED8" font-family="monospace">DBG={dbg_mm:.0f}mm | {r["ray_isim"]}</text>'
+    )
+
+    # ── Mekanizma (yarı-teknik panel çizimi) ──────────────────────
+    mek_h_px = px(r["on_bosluk"])
+    ll_px    = px(r["ll"])
+    mek_svg  = _mek_paneller(
+        r["mek"], ll_px, kabin_merkez_x,
+        sy(0), kby1, px
+    ) if mek_h_px > 8 else ""
 
     svg = f"""<svg width="100%" viewBox="0 0 {SVG_W} {SVG_H}"
      xmlns="http://www.w3.org/2000/svg">
@@ -370,19 +461,36 @@ def svg_ciz(r, kyg, kyd, uid="0"):
       text-anchor="middle" dominant-baseline="central"
       font-size="11" fill="#64748B">{r["kbg"]}×{r["kbd"]} mm</text>
 
-<!-- Mekanizma alanı -->
+<!-- Mekanizma panelleri -->
 {mek_svg}
+<!-- LL etiketi -->
+<text x="{kabin_merkez_x:.1f}" y="{sy(0)+8:.1f}" text-anchor="middle"
+      font-size="8" fill="#1E40AF" font-family="monospace">LL={r["ll"]}mm</text>
 
 <!-- CW -->
 {cw_svg}
 
-<!-- Ana raylar -->
+<!-- Ana raylar (T-ray sembolü: daire + dolu kare) -->
 <circle cx="{rsx:.1f}" cy="{rsy:.1f}" r="{rr:.1f}"
-        fill="white" stroke="#1D4ED8" stroke-width="2"/>
-<circle cx="{rsx:.1f}" cy="{rsy:.1f}" r="3" fill="#1D4ED8"/>
+        fill="white" stroke="#1E3A8A" stroke-width="1.8"/>
+<rect x="{rsx-rr*0.42:.1f}" y="{rsy-rr*0.42:.1f}"
+      width="{rr*0.84:.1f}" height="{rr*0.84:.1f}" fill="#1E3A8A"/>
 <circle cx="{rdx:.1f}" cy="{rdy:.1f}" r="{rr:.1f}"
-        fill="white" stroke="#1D4ED8" stroke-width="2"/>
-<circle cx="{rdx:.1f}" cy="{rdy:.1f}" r="3" fill="#1D4ED8"/>
+        fill="white" stroke="#1E3A8A" stroke-width="1.8"/>
+<rect x="{rdx-rr*0.42:.1f}" y="{rdy-rr*0.42:.1f}"
+      width="{rr*0.84:.1f}" height="{rr*0.84:.1f}" fill="#1E3A8A"/>
+
+<!-- DBG ölçüsü -->
+{dbg_svg}
+
+<!-- Ağırlık merkezi ekseni -->
+<line x1="{MARGIN:.1f}" y1="{rsy:.1f}" x2="{MARGIN+kw:.1f}" y2="{rsy:.1f}"
+      stroke="#2563EB" stroke-width="0.7" stroke-dasharray="10 4" opacity="0.6"/>
+
+<!-- Kabin simetri ekseni -->
+<line x1="{kabin_merkez_x:.1f}" y1="{kby1:.1f}"
+      x2="{kabin_merkez_x:.1f}" y2="{kby2:.1f}"
+      stroke="#94A3B8" stroke-width="0.5" stroke-dasharray="5 3"/>
 
 <!-- Ray ekseni (kabin ağırlık merkezi hizası) -->
 <line x1="{MARGIN:.1f}" y1="{rsy:.1f}" x2="{MARGIN+kw:.1f}" y2="{rsy:.1f}"
