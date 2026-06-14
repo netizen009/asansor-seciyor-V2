@@ -97,7 +97,8 @@ def kbd_hesapla(kyd, on_bosluk, cw_arkadan):
 
 def ray_y_hesapla(kyd, on_bosluk, cw_arkadan):
     kbd = kbd_hesapla(kyd, on_bosluk, cw_arkadan)
-    return KABIN_ARKA_BOSLUGU + kbd / 2, kbd
+    # Kabin on_bosluk'tan başladığı için, ortası on_bosluk + kbd/2 olur
+    return on_bosluk + kbd / 2, kbd
 
 def cw_yandan_karar(kyg, kyd, on_bosluk, ray_taban):
     """
@@ -133,35 +134,19 @@ def cw_yandan_karar(kyg, kyd, on_bosluk, ray_taban):
         if cw_ust < 0 or cw_alt > kyd:
             return {"gecerli": False, "senaryo": "gecersiz",
                     "mesaj": "CW ortalandığında kuyu dışına çıkıyor"}
-        ray_x_sag = kyg - RAY_DUVAR_BOSLUGU - ray_taban / 2
+        ray_x_sag = kyg - UZAK_MONTE_MESAFE - ray_taban / 2
         return {"gecerli": True, "senaryo": "cakisiyor",
                 "cw_ust": cw_ust, "cw_alt": cw_alt,
                 "ray_x_sag": ray_x_sag,
                 "mesaj": f"Ray ana ağırlıkla çakışıyor → ray {UZAK_MONTE_MESAFE}mm uzak monte"}
     else:
-        ray_x_sag = kyg - RAY_DUVAR_BOSLUGU - ray_taban / 2
+        ray_x_sag = kyg - CW_B_MESAFE - ray_taban / 2
         return {"gecerli": True, "senaryo": "cakismiyor",
                 "cw_ust": cw_ust_k, "cw_alt": cw_alt_k,
                 "ray_x_sag": ray_x_sag,
                 "mesaj": "Ray çakışmıyor → standart konumda"}
 
-def kbg_hesapla(kyg, ray_taban, cw_konum, cw_senaryo=None):
-
-    if cw_konum == "Arkadan":
-        return kyg - 100 - ray_taban - 75 - 75 - ray_taban - 100
-
-    else:
-        cw_mesafe = 310 if cw_senaryo == "cakisiyor" else 300
-
-        return (
-            kyg
-            - 100
-            - ray_taban
-            - 75
-            - 75
-            - ray_taban
-            - cw_mesafe
-        )
+def kbg_hesapla(ray_x_sol, ray_x_sag, ray_taban):
     return ray_x_sag - ray_x_sol - ray_taban - YATAKLAMA_TOPLAM
 
 def tum_kombinasyonlari_hesapla(kyg, kyd, kapasite, sistem):
@@ -200,23 +185,14 @@ def tum_kombinasyonlari_hesapla(kyg, kyd, kapasite, sistem):
                     cw_alt    = cw["cw_alt"]
                     cw_senaryo = cw["senaryo"]
                     cw_mesaj   = cw["mesaj"]
-                    kbg_max = kbg_hesapla(
-    kyg,
-    ray_taban,
-    "Yandan",
-    cw_senaryo
-)
-                    kullanilabilir_w = ray_x_sag + ray_taban / 2
+                    kbg_max = kbg_hesapla(ray_x_sol, ray_x_sag, ray_taban)
+                    kullanilabilir_w = kyg - CW_B_MESAFE  # CW tarafı hariç kullanılabilir genişlik
                 else:
                     ray_x_sag = kyg - RAY_DUVAR_BOSLUGU - ray_taban / 2
                     cw_ust = cw_alt = None
                     cw_senaryo = "—"
                     cw_mesaj   = "Arkadan CW"
-                    kbg_max = kbg_hesapla(
-    kyg,
-    ray_taban,
-    "Arkadan"
-)
+                    kbg_max = kbg_hesapla(ray_x_sol, ray_x_sag, ray_taban)
                     kullanilabilir_w = kyg
 
                 if kbg_max <= 200:  # minimum kabin genişliği
@@ -360,9 +336,9 @@ def svg_ciz(r, kyg, kyd, uid="0"):
     mek_svg = ""
     if mek_h > 4:
         mek_svg = f"""
-  <rect x="{kbx1:.1f}" y="{sy(0):.1f}" width="{kbw:.1f}" height="{mek_h:.1f}"
+  <rect x="{kbx1:.1f}" y="{MARGIN:.1f}" width="{kbw:.1f}" height="{mek_h:.1f}"
         fill="#DBEAFE" stroke="#3B82F6" stroke-width="0.8" stroke-dasharray="4 2"/>
-  <text x="{(kbx1+kbx2)/2:.1f}" y="{sy(0) + mek_h/2:.1f}"
+  <text x="{(kbx1+kbx2)/2:.1f}" y="{MARGIN + mek_h/2:.1f}"
         text-anchor="middle" dominant-baseline="central"
         font-size="9" fill="#1D4ED8">{r["mek"]}</text>"""
 
@@ -408,9 +384,10 @@ def svg_ciz(r, kyg, kyd, uid="0"):
         fill="white" stroke="#1D4ED8" stroke-width="2"/>
 <circle cx="{rdx:.1f}" cy="{rdy:.1f}" r="3" fill="#1D4ED8"/>
 
-<!-- Ray ekseni -->
+<!-- Ray ekseni (kabin ağırlık merkezi hizası) -->
 <line x1="{MARGIN:.1f}" y1="{rsy:.1f}" x2="{MARGIN+kw:.1f}" y2="{rsy:.1f}"
-      stroke="#3B82F6" stroke-width="0.6" stroke-dasharray="8 4" opacity="0.6"/>
+      stroke="#2563EB" stroke-width="1.0" stroke-dasharray="10 4" opacity="0.75"/>
+<text x="{MARGIN+4:.1f}" y="{rsy-4:.1f}" font-size="9" fill="#2563EB">ağırlık merkezi</text>
 
 <!-- ── ÖLÇÜLER ── -->
 <!-- KyG -->
