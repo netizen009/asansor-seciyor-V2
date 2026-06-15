@@ -486,6 +486,7 @@ def svg_ciz(r, kyg, kyd, uid="0"):
     kbg_y  = MT + kh + 28      # KbG ölçüsü: kuyunun altında
     kbd_x  = ML - 32            # KbD ölçüsü: kuyunun solunda
 
+    eok = 40
     svg = f"""<svg width="100%" viewBox="0 0 {SVG_W} {SVG_H}"
      xmlns="http://www.w3.org/2000/svg"
      style="background:white">
