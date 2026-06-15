@@ -92,12 +92,12 @@ def ray_sec(kapasite, hiz):
             return r
     return ANA_RAY[-1]
 
-def kbd_hesapla(kyd, on_bosluk, cw_arkadan, #duvar_payi#):
+def kbd_hesapla(kyd, on_bosluk, cw_arkadan):
     arka = ARKADAN_CW_PAYI if cw_arkadan else KABIN_ARKA_BOSLUGU
-    return kyd - on_bosluk - arka - #duvar_payi#
+    return kyd - on_bosluk - arka 
 
 def ray_y_hesapla(kyd, on_bosluk, cw_arkadan):
-    kbd = kbd_hesapla(kyd, on_bosluk, cw_arkadan, #duvar_payi#)
+    kbd = kbd_hesapla(kyd, on_bosluk, cw_arkadan)
     # Kabin on_bosluk'tan başladığı için, ortası on_bosluk + kbd/2 olur
     return on_bosluk + kbd / 2, kbd
 
@@ -147,8 +147,8 @@ def cw_yandan_karar(kyg, kyd, on_bosluk, ray_taban):
                 "ray_x_sag": ray_x_sag,
                 "mesaj": "Ray çakışmıyor → standart konumda"}
 
-def kbg_hesapla(ray_x_sol, ray_x_sag, ray_taban, #duvar_payi#):
-    return ray_x_sag - ray_x_sol - ray_taban - YATAKLAMA_TOPLAM - #duvar_payi*2#
+def kbg_hesapla(ray_x_sol, ray_x_sag, ray_taban):
+    return ray_x_sag - ray_x_sol - ray_taban - YATAKLAMA_TOPLAM
 
 def tum_kombinasyonlari_hesapla(kyg, kyd, kapasite, sistem):
     """
@@ -166,7 +166,7 @@ def tum_kombinasyonlari_hesapla(kyg, kyd, kapasite, sistem):
             on_bosluk = mek["on"]
             cw_arkadan = (cw_konum == "Arkadan")
 
-            kbd = kbd_hesapla(kyd, on_bosluk, cw_arkadan, #duvar_payi#)
+            kbd = kbd_hesapla(kyd, on_bosluk, cw_arkadan)
             if kbd <= 200:   # minimum kabin derinliği
                 continue
 
