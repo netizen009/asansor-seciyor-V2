@@ -32,10 +32,10 @@ MEKANIZMA = {
 
 ANA_RAY = [
     {"isim": "T50/A  (50mm)",  "taban": 50,  "kap_max": 320,  "hiz_max": 1.0},
-    {"isim": "T70/A  (70mm)",  "taban": 70,  "kap_max": 630,  "hiz_max": 1.6},
-    {"isim": "T89/B  (89mm)",  "taban": 89,  "kap_max": 1000, "hiz_max": 2.5},
-    {"isim": "T114/B (114mm)", "taban": 114, "kap_max": 2000, "hiz_max": 4.0},
-    {"isim": "T127/B (127mm)", "taban": 127, "kap_max": 5000, "hiz_max": 6.0},
+    {"isim": "T70/A  (65mm)",  "taban": 65,  "kap_max": 630,  "hiz_max": 1.6},
+    {"isim": "T90/B  (75mm)",  "taban": 75,  "kap_max": 1000, "hiz_max": 2.5},
+    {"isim": "T114/B (89mm)",  "taban": 89,  "kap_max": 2000, "hiz_max": 4.0},
+    {"isim": "T127/B (89mm)",  "taban": 89,  "kap_max": 5000, "hiz_max": 6.0},
 ]
 
 SISTEMLER = [
