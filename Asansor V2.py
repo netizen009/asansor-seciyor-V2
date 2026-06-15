@@ -150,7 +150,70 @@ def cw_yandan_karar(kyg, kyd, on_bosluk, ray_taban):
 def kbg_hesapla(ray_x_sol, ray_x_sag, ray_taban):
     return ray_x_sag - ray_x_sol - ray_taban - YATAKLAMA_TOPLAM
 
-def tum_kombinasyonlari_hesapla(kyg, kyd, kapasite, sistem):
+def kombinasyon_puani(r, sistem, seyir_mm, kapasite):
+    puan = 0
+
+    seyir_m = seyir_mm / 1000
+
+    # ── Seyir yüksekliği ──────────────────────────
+    if "Dişlili" in sistem["ad"]:
+        if seyir_m <= 20:
+            puan += 100
+        elif seyir_m <= 40:
+            puan += 50
+
+    elif "Dişlisiz" in sistem["ad"]:
+        if seyir_m <= 20:
+            puan += 70
+        elif seyir_m <= 60:
+            puan += 100
+        else:
+            puan += 80
+
+    # ── Kapasite ─────────────────────────────────
+    if kapasite <= 1000:
+        if "1:1" in sistem["ad"]:
+            puan += 50
+
+    elif kapasite <= 3000:
+        if "2:1" in sistem["ad"]:
+            puan += 50
+
+    else:
+        if "2:1" in sistem["ad"]:
+            puan += 100
+
+    # ── Kapı genişliği ───────────────────────────
+    puan += r["ll"] / 20
+
+    # ── Kabin alanı ──────────────────────────────
+    alan = r["kbg"] * r["kbd"]
+    puan += alan / 50000
+
+    # ── Ray ekonomisi ────────────────────────────
+    ray_puanlari = {
+        50: 100,
+        75: 90,
+        90: 80,
+        114: 70,
+        127: 60,
+    }
+
+    puan += ray_puanlari.get(r["ray_taban"], 50)
+
+    # ── MRL bonusu ───────────────────────────────
+    if not sistem["mr"]:
+        puan += 20
+
+    return round(puan, 1)
+
+def tum_kombinasyonlari_hesapla(
+    kyg,
+    kyd,
+    kapasite,
+    sistem,
+    seyir_mm
+):
     """
     Tüm geçerli (cw_konum, mekanizma, hız) kombinasyonlarını hesapla.
     Her biri için kabin boyutları ve ray konumlarını döndür.
@@ -231,6 +294,18 @@ def tum_kombinasyonlari_hesapla(kyg, kyd, kapasite, sistem):
                 # En büyükten başlayarak 3 adede kadar al (2 basamak altı)
                 gecerli_ll_ve_tmg.sort(key=lambda x: x[0], reverse=True)
                 sinirli_ll_listesi = gecerli_ll_ve_tmg[:3]
+
+                puan = kombinasyon_puani(
+                    {
+                        "ll": secilen_ll,
+                        "kbg": round(kbg_max),
+                        "kbd": round(kbd),
+                        "ray_taban": ray_taban
+                    },
+                    sistem,
+                    seyir_mm,
+                    kapasite
+                )
                 
                 for secilen_ll, tmg in sinirli_ll_listesi:
                     sonuclar.append({
@@ -251,8 +326,13 @@ def tum_kombinasyonlari_hesapla(kyg, kyd, kapasite, sistem):
                         "on_bosluk":  on_bosluk,
                         "ll":         secilen_ll,
                         "tmg":        round(tmg),
+                        "puan":       puan,
                     })
 
+    sonuclar.sort(
+    key=lambda x: x["puan"],
+    reverse=True
+    )
     return sonuclar
 
 # ─────────────────────────────────────────────────────────────────
@@ -832,11 +912,33 @@ for tab, sistem in zip(tabs, uygun):
     with tab:
 
         # Tüm kombinasyonları hesapla
-        kombinasyonlar = tum_kombinasyonlari_hesapla(kyg, kyd, kapasite, sistem)
+        kombinasyonlar = tum_kombinasyonlari_hesapla(kyg, kyd, kapasite, sistem, seyir)
 
         if not kombinasyonlar:
             st.warning("Bu sistem için geçerli kombinasyon bulunamadı.")
             continue
+        st.markdown("## 🏆 Önerilen Çözümler")
+
+        ilk_uc = kombinasyonlar[:3]
+
+        for sira, onerilen in enumerate(ilk_uc, start=1):
+
+            emoji = {
+                1: "🥇",
+                2: "🥈",
+                3: "🥉"
+            }[sira]
+
+            st.success(
+                f"{emoji} #{sira} | "
+                f"Puan: {onerilen['puan']} | "
+                f"{onerilen['cw_konum']} CW | "
+                f"{onerilen['mek']} | "
+                f"LL={onerilen['ll']} mm | "
+                f"KbG={onerilen['kbg']} mm | "
+                f"KbD={onerilen['kbd']} mm | "
+                f"{onerilen['ray_isim']}"
+            )
 
         # ── Sonuç tablosu ────────────────────────────────────────
         st.markdown("#### 📋 Tüm Geçerli Kombinasyonlar")
@@ -853,6 +955,7 @@ for tab, sistem in zip(tabs, uygun):
                 "KbG (mm)":    r["kbg"],
                 "KbD (mm)":    r["kbd"],
                 "CW Durum":    r["cw_senaryo"],
+                "Puan":        r["puan"],
             })
 
         st.dataframe(tablo, use_container_width=True, hide_index=True)
