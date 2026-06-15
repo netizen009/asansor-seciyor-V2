@@ -370,7 +370,14 @@ def svg_ciz(r, kyg, kyd, uid="0"):
         )
 
     # ── RA ölçüsü (ray arası, ray ekseninin altında) ──────────────
+    if r["cw_konum"] == "Arkadan":
     ra_mm = kyg - 2 * (RAY_DUVAR_BOSLUGU + r["ray_taban"])
+
+    elif r["cw_senaryo"] == "cakisiyor":
+    ra_mm = kyg - RAY_DUVAR_BOSLUGU - UZAK_MONTE_MESAFE - 2 * r["ray_taban"]
+
+    else:
+    ra_mm = kyg - RAY_DUVAR_BOSLUGU - CW_B_MESAFE - 2 * r["ray_taban"]
     ra_y  = rsy + rr + 20
     ra_svg = (
         f'<line x1="{rsx:.1f}" y1="{ra_y:.1f}" '
