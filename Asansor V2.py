@@ -370,7 +370,7 @@ def svg_ciz(r, kyg, kyd, uid="0"):
         )
 
     # ── RA ölçüsü (ray arası, ray ekseninin altında) ──────────────
-    ra_mm = r["ray_x_sag"] - r["ray_x_sol"]
+    ra_mm = kyg - 2 * (RAY_DUVAR_BOSLUGU + r["ray_taban"])
     ra_y  = rsy + rr + 20
     ra_svg = (
         f'<line x1="{rsx:.1f}" y1="{ra_y:.1f}" '
