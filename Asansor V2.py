@@ -134,13 +134,13 @@ def cw_yandan_karar(kyg, kyd, on_bosluk, ray_taban):
         if cw_ust < 0 or cw_alt > kyd:
             return {"gecerli": False, "senaryo": "gecersiz",
                     "mesaj": "CW ortalandığında kuyu dışına çıkıyor"}
-        ray_x_sag = kyg - UZAK_MONTE_MESAFE - ray_taban/2
+        ray_x_sag = kyg - UZAK_MONTE_MESAFE - ray_taban / 2
         return {"gecerli": True, "senaryo": "cakisiyor",
                 "cw_ust": cw_ust, "cw_alt": cw_alt,
                 "ray_x_sag": ray_x_sag,
                 "mesaj": f"Ray ana ağırlıkla çakışıyor → ray {UZAK_MONTE_MESAFE}mm uzak monte"}
     else:
-        ray_x_sag = kyg - CW_B_MESAFE - ray_taban/2
+        ray_x_sag = kyg - CW_B_MESAFE - ray_taban / 2
         return {"gecerli": True, "senaryo": "cakismiyor",
                 "cw_ust": cw_ust_k, "cw_alt": cw_alt_k,
                 "ray_x_sag": ray_x_sag,
@@ -174,7 +174,7 @@ def tum_kombinasyonlari_hesapla(kyg, kyd, kapasite, sistem):
             for hiz in sistem["hizlar"]:
                 ray = ray_sec(kapasite, hiz)
                 ray_taban = ray["taban"]
-                ray_x_sol = RAY_DUVAR_BOSLUGU + ray_taban/2
+                ray_x_sol = RAY_DUVAR_BOSLUGU + ray_taban / 2
 
                 if cw_konum == "Yandan":
                     cw = cw_yandan_karar(kyg, kyd, on_bosluk, ray_taban)
@@ -188,7 +188,7 @@ def tum_kombinasyonlari_hesapla(kyg, kyd, kapasite, sistem):
                     kbg_max = kbg_hesapla(ray_x_sol, ray_x_sag, ray_taban)
                     kullanilabilir_w = kyg - CW_B_MESAFE  # CW tarafı hariç kullanılabilir genişlik
                 else:
-                    ray_x_sag = kyg - RAY_DUVAR_BOSLUGU - ray_taban
+                    ray_x_sag = kyg - RAY_DUVAR_BOSLUGU - ray_taban / 2
                     cw_ust = cw_alt = None
                     cw_senaryo = "—"
                     cw_mesaj   = "Arkadan CW"
