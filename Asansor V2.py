@@ -530,7 +530,24 @@ def svg_ciz(r, kyg, kyd, uid="0"):
       width="{rr*0.84:.1f}" height="{rr*0.84:.1f}" fill="#1E3A8A"/>
 
 <!-- Ağırlık merkezi ekseni (yatay kesik) -->
-<line x1="{ML:.1f}" y1="{rsy:.1f}" x2="{ML+kw:.1f}" y2="{rsy:.1f}"
+# ── Koordinat eksenleri (daha büyük ve belirgin) ──
+eok = 40   # ok uzunluğu
+# x ekseni (sağa →)
+<line x1="{ML+10:.1f}" y1="{MT+10:.1f}" x2="{ML+10+eok:.1f}" y2="{MT+10:.1f}"
+      stroke="#111" stroke-width="1.8"/>
+<polygon points="{ML+10+eok:.1f},{MT+10:.1f} {ML+10+eok-8:.1f},{MT+6:.1f} {ML+10+eok-8:.1f},{MT+14:.1f}"
+         fill="#111"/>
+<text x="{ML+10+eok+5:.1f}" y="{MT+10:.1f}" dominant-baseline="central"
+      font-size="11" font-weight="bold" fill="#111">x</text>
+# y ekseni (aşağı ↓)
+<line x1="{ML+10:.1f}" y1="{MT+10:.1f}" x2="{ML+10:.1f}" y2="{MT+10+eok:.1f}"
+      stroke="#111" stroke-width="1.8"/>
+<polygon points="{ML+10:.1f},{MT+10+eok:.1f} {ML+6:.1f},{MT+10+eok-8:.1f} {ML+14:.1f},{MT+10+eok-8:.1f}"
+         fill="#111"/>
+<text x="{ML+10:.1f}" y="{MT+10+eok+8:.1f}" text-anchor="middle"
+      font-size="11" font-weight="bold" fill="#111">y</text>
+# Orijin noktası
+<circle cx="{ML+10:.1f}" cy="{MT+10:.1f}" r="3" fill="#111"/>
       stroke="#2563EB" stroke-width="0.7" stroke-dasharray="10 4" opacity="0.55"/>
 
 <!-- Kabin simetri ekseni (dikey kesik) -->
