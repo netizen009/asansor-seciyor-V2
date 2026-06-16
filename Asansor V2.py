@@ -190,6 +190,7 @@ def kombinasyon_puani(r, sistem, seyir_mm, kapasite):
         puan += alan / 50000
         return round(puan, 1)
 
+    puan = 0
     seyir_m = seyir_mm / 1000
 
     # ── Seyir yüksekliği ──────────────────────────
