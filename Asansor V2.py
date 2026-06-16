@@ -256,11 +256,11 @@ def hidrolik_kombinasyonlari_hesapla(kyg, kyd, kapasite, sistem, seyir_mm):
     # Açılım formülleri (traksiyonlu sistemle aynı)
     def acilim_hesapla(mek_adi, ll):
         return {
-            "Merkezi 2 panel":    (ll/2 + 25) * 2 + ll,
-            "Merkezi 4 panel":    (ll/4 + 25) * 2 + ll,
-            "Teleskopik 2 panel": (ll/2 + 25)     + ll,
-            "Teleskopik 3 panel": (ll/3 + 25)     + ll,
-            "Teleskopik 4 panel": (ll/4 + 25)     + ll,
+            "Merkezi 2 panel":    (ll/2 + 25) * 2 + ll + 100,
+            "Merkezi 4 panel":    (ll/4 + 25) * 2 + ll + 100,
+            "Teleskopik 2 panel": (ll/2 + 25)     + ll + 100,
+            "Teleskopik 3 panel": (ll/3 + 25)     + ll + 100,
+            "Teleskopik 4 panel": (ll/4 + 25)     + ll + 100,
         }.get(mek_adi, ll)
 
     for hiz in sistem["hizlar"]:
@@ -505,11 +505,11 @@ def svg_ciz(r, kyg, kyd, uid="0"):
     # ── Açılım formülleri (programa gömülü) ──────────────────────
     kpg = r["ll"]
     acilim_mm = {
-        "Merkezi 2 panel":    (kpg/2 + 25) * 2 + kpg,
-        "Merkezi 4 panel":    (kpg/4 + 25) * 2 + kpg,
-        "Teleskopik 2 panel": (kpg/2 + 25)     + kpg,
-        "Teleskopik 3 panel": (kpg/3 + 25)     + kpg,
-        "Teleskopik 4 panel": (kpg/4 + 25)     + kpg,
+        "Merkezi 2 panel":    (kpg/2 + 25) * 2 + kpg + 100,
+        "Merkezi 4 panel":    (kpg/4 + 25) * 2 + kpg + 100,
+        "Teleskopik 2 panel": (kpg/2 + 25)     + kpg + 100,
+        "Teleskopik 3 panel": (kpg/3 + 25)     + kpg + 100,
+        "Teleskopik 4 panel": (kpg/4 + 25)     + kpg + 100,
     }.get(r["mek"], kpg)
 
     # ── Tarama (kabin içi) ────────────────────────────────────────
