@@ -248,40 +248,48 @@ def kombinasyon_puani(r, sistem, seyir_mm, kapasite):
 def hidrolik_kombinasyonlari_hesapla(kyg, kyd, kapasite, sistem, seyir_mm):
     """
     Hidrolik sistem kombinasyonları.
-    ⚠ Karkas boyutları henüz tanımlanmadı — placeholder değerler kullanılıyor.
-    Boyutlar belirlendikten sonra bu fonksiyon güncellenecek.
+    ⚠ Karkas boyutları henüz tanımlanmadı.
+    KbG/KbD gösterilmez. LL açılımı KyG'yi aşamaz.
     """
     sonuclar = []
+
+    # Açılım formülleri (traksiyonlu sistemle aynı)
+    def acilim_hesapla(mek_adi, ll):
+        return {
+            "Merkezi 2 panel":    (ll/2 + 25) * 2 + ll,
+            "Merkezi 4 panel":    (ll/4 + 25) * 2 + ll,
+            "Teleskopik 2 panel": (ll/2 + 25)     + ll,
+            "Teleskopik 3 panel": (ll/3 + 25)     + ll,
+            "Teleskopik 4 panel": (ll/4 + 25)     + ll,
+        }.get(mek_adi, ll)
+
     for hiz in sistem["hizlar"]:
         for mek_adi, mek in MEKANIZMA.items():
-            # ── PLACEHOLDER: Kabin boyutları ──────────────────────
-            # Karkas ölçüleri netleşince buradaki formüller güncellenecek
-            # Şimdilik tüm kuyu alanını kabin olarak göster (gerçekçi değil)
-            kbg_placeholder = kyg - 300 - DUVAR_PAYI * 2   # 300mm toplam boşluk tahmini
-            kbd_placeholder = kyd - mek["on"] - 50 - DUVAR_PAYI * 2
 
-            if kbg_placeholder <= 0 or kbd_placeholder <= 0:
-                continue
+            # Standart LL listesi (traksiyonlu ile aynı)
+            if "3 panel" in mek_adi or "4 panel" in mek_adi:
+                ll_listesi = [800, 900, 1000, 1100, 1200]
+            else:
+                ll_listesi = [800, 900, 1000, 1100, 1200, 1300, 1400]
 
-            # LL hesabı (mevcut LL tablosundan — mekanizma çalışıyor)
-            ll_min = 700; ll_max = min(kbg_placeholder - 100, 1400); ll_adim = 100
-            if ll_max < ll_min:
-                continue
+            for ll in ll_listesi:
+                # LL açılımı kuyu genişliğini aşmamalı
+                acilim = acilim_hesapla(mek_adi, ll)
+                if acilim > kyg:
+                    continue
 
-            for ll in range(ll_min, ll_max + 1, ll_adim):
                 puan = kombinasyon_puani(
-                    {"ll": ll, "kbg": round(kbg_placeholder),
-                     "kbd": round(kbd_placeholder), "ray_taban": 0},
+                    {"ll": ll, "kbg": 0, "kbd": 0, "ray_taban": 0},
                     sistem, seyir_mm, kapasite
                 )
                 sonuclar.append({
                     "cw_konum":   "—",
                     "mek":        mek_adi,
                     "hiz":        hiz,
-                    "ray_isim":   "Hidrolik ray",
+                    "ray_isim":   "—",
                     "ray_taban":  0,
-                    "kbg":        round(kbg_placeholder),
-                    "kbd":        round(kbd_placeholder),
+                    "kbg":        0,    # placeholder — gösterilmeyecek
+                    "kbd":        0,    # placeholder — gösterilmeyecek
                     "ray_x_sol":  0,
                     "ray_x_sag":  0,
                     "ray_y":      0,
@@ -291,6 +299,7 @@ def hidrolik_kombinasyonlari_hesapla(kyg, kyd, kapasite, sistem, seyir_mm):
                     "cw_mesaj":   "Hidrolik sistem — CW yok",
                     "on_bosluk":  mek["on"],
                     "ll":         ll,
+                    "acilim":     round(acilim),
                     "tmg":        0,
                     "puan":       puan,
                     "hidrolik":   True,
@@ -317,7 +326,7 @@ def svg_ciz_hidrolik_wip(r, kyg, kyd, uid="0"):
 <text x="{SVG_W//2}" y="{SVG_H//2 + 30}" text-anchor="middle"
       font-size="11" fill="#9A3412">Hidrolik karkas boyutları netleşince çizim eklenecek.</text>
 <text x="{SVG_W//2}" y="{SVG_H//2 + 48}" text-anchor="middle"
-      font-size="10" fill="#C2410C">Sistem: Hidrolik | Hız: {r["hiz"]} m/s | KbG≈{r["kbg"]}mm | KbD≈{r["kbd"]}mm</text>
+      font-size="10" fill="#C2410C">Sistem: Hidrolik | Hız: {r["hiz"]} m/s | KpG={r["ll"]}mm | Açılım={r.get("acilim","—")}mm</text>
 </svg>"""
     return svg, SVG_H
 
@@ -910,9 +919,9 @@ for tab, sistem in zip(tabs, uygun):
                     f"Puan: {onerilen['puan']} | "
                     f"Hidrolik | "
                     f"{onerilen['mek']} | "
-                    f"LL={onerilen['ll']} mm | "
-                    f"KbG≈{onerilen['kbg']} mm | "
-                    f"KbD≈{onerilen['kbd']} mm"
+                    f"KpG={onerilen['ll']} mm | "
+                    f"Açılım={onerilen.get('acilim','—')} mm | "
+                    f"{onerilen['hiz']} m/s"
                 )
             else:
                 st.success(
@@ -936,16 +945,17 @@ for tab, sistem in zip(tabs, uygun):
                 "Mekanizma": r["mek"],
                 "Kapı (LL)": f"{r['ll']} mm",
                 "Hız (m/s)": r["hiz"],
-                "KbG (mm)":  r["kbg"],
-                "KbD (mm)":  r["kbd"],
                 "Puan":      r["puan"],
             }
-            if not r.get("hidrolik"):
-                satir["CW Konum"] = r["cw_konum"]
-                satir["Ana Ray"]  = r["ray_isim"]
-                satir["CW Durum"] = r["cw_senaryo"]
+            if r.get("hidrolik"):
+                satir["Açılım"]  = f"{r.get('acilim','—')} mm"
+                satir["Durum"]   = "Karkas boyutları bekleniyor"
             else:
-                satir["Sistem"] = "Hidrolik (boyutlar tahmini)"
+                satir["KbG (mm)"]  = r["kbg"]
+                satir["KbD (mm)"]  = r["kbd"]
+                satir["CW Konum"]  = r["cw_konum"]
+                satir["Ana Ray"]   = r["ray_isim"]
+                satir["CW Durum"]  = r["cw_senaryo"]
             tablo.append(satir)
 
         st.dataframe(tablo, use_container_width=True, hide_index=True)
@@ -994,10 +1004,16 @@ for tab, sistem in zip(tabs, uygun):
 
         # Özet kutucuklar
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Kabin Genişliği (KbG)", f"{r['kbg']} mm")
-        col2.metric("Net Kapı (LL)", f"{r['ll']} mm")
-        col3.metric("Ana Ray", r["ray_isim"])
-        col4.metric("Hız", f"{r['hiz']} m/s")
+        if r.get("hidrolik"):
+            col1.metric("Kapı Genişliği (KpG)", f"{r['ll']} mm")
+            col2.metric("Açılım Genişliği", f"{r.get('acilim','—')} mm")
+            col3.metric("Mekanizma", r["mek"])
+            col4.metric("Hız", f"{r['hiz']} m/s")
+        else:
+            col1.metric("Kabin Genişliği (KbG)", f"{r['kbg']} mm")
+            col2.metric("Net Kapı (LL)", f"{r['ll']} mm")
+            col3.metric("Ana Ray", r["ray_isim"])
+            col4.metric("Hız", f"{r['hiz']} m/s")
 
         # ── Sistem detayları ─────────────────────────────────────
         with st.expander("ℹ️ Sistem Bilgileri"):
