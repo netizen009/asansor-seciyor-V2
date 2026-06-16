@@ -80,6 +80,17 @@ SISTEMLER = [
      "cw_yandan":True, "cw_arkadan":True,
      "avantajlar":["Çok yüksek hız","Uzun ömür","Sessiz"],
      "dezavantajlar":["Makine dairesi gerekir","Yüksek maliyet"]},
+
+    # ── HİDROLİK (ölçüler placeholder — karkas boyutları eklenince güncellenecek) ──
+    {"id":"HYD",            "ad":"Hidrolik",
+     "hizlar":[0.63, 0.8],  "kap_min":200,  "kap_max":5000, "kat_max":5,
+     "pit_min":300, "oh_min":2500, "mr":True,
+     "cw_yandan":False, "cw_arkadan":False,
+     "hidrolik": True,
+     "avantajlar":["Düşük kuyu dibi gereksinimi","Karşı ağırlık yok → kuyu temiz",
+                   "Yüksek yük kapasitesi","Pompa dairesi herhangi bir konumda"],
+     "dezavantajlar":["Maks 5 kat","Hız ≤ 0.8 m/s","Pompa dairesi gerekir",
+                      "Yüksek enerji tüketimi","Yağ sızıntısı riski"]},
 ]
 
 # ─────────────────────────────────────────────────────────────────
@@ -156,7 +167,28 @@ def kbg_hesapla(ray_x_sol, ray_x_sag, ray_taban):
     return kbg_dis - DUVAR_PAYI * 2
 
 def kombinasyon_puani(r, sistem, seyir_mm, kapasite):
-    puan = 0
+    # Hidrolik için ayrı puanlama
+    if sistem.get("hidrolik"):
+        puan = 0
+        # Düşük kat sayısı → hidrolik avantajlı
+        kat = seyir_mm / KAT_YUKSEKLIGI + 1
+        if kat <= 3:
+            puan += 100
+        elif kat <= 5:
+            puan += 70
+        # Yüksek kapasite → hidrolik avantajlı
+        if kapasite >= 2000:
+            puan += 100
+        elif kapasite >= 1000:
+            puan += 60
+        else:
+            puan += 30
+        # Kapı genişliği
+        puan += r.get("ll", 800) / 20
+        # Kabin alanı
+        alan = r.get("kbg", 0) * r.get("kbd", 0)
+        puan += alan / 50000
+        return round(puan, 1)
 
     seyir_m = seyir_mm / 1000
 
@@ -212,6 +244,83 @@ def kombinasyon_puani(r, sistem, seyir_mm, kapasite):
 
     return round(puan, 1)
 
+def hidrolik_kombinasyonlari_hesapla(kyg, kyd, kapasite, sistem, seyir_mm):
+    """
+    Hidrolik sistem kombinasyonları.
+    ⚠ Karkas boyutları henüz tanımlanmadı — placeholder değerler kullanılıyor.
+    Boyutlar belirlendikten sonra bu fonksiyon güncellenecek.
+    """
+    sonuclar = []
+    for hiz in sistem["hizlar"]:
+        for mek_adi, mek in MEKANIZMA.items():
+            # ── PLACEHOLDER: Kabin boyutları ──────────────────────
+            # Karkas ölçüleri netleşince buradaki formüller güncellenecek
+            # Şimdilik tüm kuyu alanını kabin olarak göster (gerçekçi değil)
+            kbg_placeholder = kyg - 300 - DUVAR_PAYI * 2   # 300mm toplam boşluk tahmini
+            kbd_placeholder = kyd - mek["on"] - 50 - DUVAR_PAYI * 2
+
+            if kbg_placeholder <= 0 or kbd_placeholder <= 0:
+                continue
+
+            # LL hesabı (mevcut LL tablosundan — mekanizma çalışıyor)
+            ll_min = 700; ll_max = min(kbg_placeholder - 100, 1400); ll_adim = 100
+            if ll_max < ll_min:
+                continue
+
+            for ll in range(ll_min, ll_max + 1, ll_adim):
+                puan = kombinasyon_puani(
+                    {"ll": ll, "kbg": round(kbg_placeholder),
+                     "kbd": round(kbd_placeholder), "ray_taban": 0},
+                    sistem, seyir_mm, kapasite
+                )
+                sonuclar.append({
+                    "cw_konum":   "—",
+                    "mek":        mek_adi,
+                    "hiz":        hiz,
+                    "ray_isim":   "Hidrolik ray",
+                    "ray_taban":  0,
+                    "kbg":        round(kbg_placeholder),
+                    "kbd":        round(kbd_placeholder),
+                    "ray_x_sol":  0,
+                    "ray_x_sag":  0,
+                    "ray_y":      0,
+                    "cw_ust":     None,
+                    "cw_alt":     None,
+                    "cw_senaryo": "—",
+                    "cw_mesaj":   "Hidrolik sistem — CW yok",
+                    "on_bosluk":  mek["on"],
+                    "ll":         ll,
+                    "tmg":        0,
+                    "puan":       puan,
+                    "hidrolik":   True,
+                })
+
+    sonuclar.sort(key=lambda x: x["puan"], reverse=True)
+    return sonuclar
+
+
+def svg_ciz_hidrolik_wip(r, kyg, kyd, uid="0"):
+    """
+    Hidrolik sistem üstten görünüşü — karkas boyutları netleşene kadar
+    'ÜZERİNDE ÇALIŞILIYOR' mesajı gösterir.
+    """
+    SVG_W = 640; SVG_H = 200
+    svg = f"""<svg width="100%" viewBox="0 0 {SVG_W} {SVG_H}"
+     xmlns="http://www.w3.org/2000/svg" style="background:white">
+<rect x="20" y="20" width="{SVG_W-40}" height="{SVG_H-40}"
+      fill="#FFF7ED" stroke="#F97316" stroke-width="2" stroke-dasharray="8 4" rx="10"/>
+<text x="{SVG_W//2}" y="{SVG_H//2 - 18}" text-anchor="middle"
+      font-size="22" font-weight="bold" fill="#EA580C">🚧</text>
+<text x="{SVG_W//2}" y="{SVG_H//2 + 8}" text-anchor="middle"
+      font-size="16" font-weight="bold" fill="#EA580C">ÜZERİNDE ÇALIŞILIYOR</text>
+<text x="{SVG_W//2}" y="{SVG_H//2 + 30}" text-anchor="middle"
+      font-size="11" fill="#9A3412">Hidrolik karkas boyutları netleşince çizim eklenecek.</text>
+<text x="{SVG_W//2}" y="{SVG_H//2 + 48}" text-anchor="middle"
+      font-size="10" fill="#C2410C">Sistem: Hidrolik | Hız: {r["hiz"]} m/s | KbG≈{r["kbg"]}mm | KbD≈{r["kbd"]}mm</text>
+</svg>"""
+    return svg, SVG_H
+
+
 def tum_kombinasyonlari_hesapla(
     kyg,
     kyd,
@@ -223,6 +332,10 @@ def tum_kombinasyonlari_hesapla(
     Tüm geçerli (cw_konum, mekanizma, hız) kombinasyonlarını hesapla.
     Her biri için kabin boyutları ve ray konumlarını döndür.
     """
+    # Hidrolik sistemler için ayrı fonksiyon
+    if sistem.get("hidrolik"):
+        return hidrolik_kombinasyonlari_hesapla(kyg, kyd, kapasite, sistem, seyir_mm)
+
     sonuclar = []
 
     cw_konumlari = []
@@ -790,34 +903,49 @@ for tab, sistem in zip(tabs, uygun):
                 3: "🥉"
             }[sira]
 
-            st.success(
-                f"{emoji} #{sira} | "
-                f"Puan: {onerilen['puan']} | "
-                f"{onerilen['cw_konum']} CW | "
-                f"{onerilen['mek']} | "
-                f"LL={onerilen['ll']} mm | "
-                f"KbG={onerilen['kbg']} mm | "
-                f"KbD={onerilen['kbd']} mm | "
-                f"{onerilen['ray_isim']}"
-            )
+            if onerilen.get("hidrolik"):
+                st.success(
+                    f"{emoji} #{sira} | "
+                    f"Puan: {onerilen['puan']} | "
+                    f"Hidrolik | "
+                    f"{onerilen['mek']} | "
+                    f"LL={onerilen['ll']} mm | "
+                    f"KbG≈{onerilen['kbg']} mm | "
+                    f"KbD≈{onerilen['kbd']} mm"
+                )
+            else:
+                st.success(
+                    f"{emoji} #{sira} | "
+                    f"Puan: {onerilen['puan']} | "
+                    f"{onerilen['cw_konum']} CW | "
+                    f"{onerilen['mek']} | "
+                    f"LL={onerilen['ll']} mm | "
+                    f"KbG={onerilen['kbg']} mm | "
+                    f"KbD={onerilen['kbd']} mm | "
+                    f"{onerilen['ray_isim']}"
+                )
 
         # ── Sonuç tablosu ────────────────────────────────────────
         st.markdown("#### 📋 Tüm Geçerli Kombinasyonlar")
 
         tablo = []
         for i, r in enumerate(kombinasyonlar):
-            tablo.append({
-                "#":           i+1,
-                "CW Konum":    r["cw_konum"],
-                "Mekanizma":   r["mek"],
-                "Kapı (LL)":   f"{r['ll']} mm",
-                "Hız (m/s)":   r["hiz"],
-                "Ana Ray":     r["ray_isim"],
-                "KbG (mm)":    r["kbg"],
-                "KbD (mm)":    r["kbd"],
-                "CW Durum":    r["cw_senaryo"],
-                "Puan":        r["puan"],
-            })
+            satir = {
+                "#":         i+1,
+                "Mekanizma": r["mek"],
+                "Kapı (LL)": f"{r['ll']} mm",
+                "Hız (m/s)": r["hiz"],
+                "KbG (mm)":  r["kbg"],
+                "KbD (mm)":  r["kbd"],
+                "Puan":      r["puan"],
+            }
+            if not r.get("hidrolik"):
+                satir["CW Konum"] = r["cw_konum"]
+                satir["Ana Ray"]  = r["ray_isim"]
+                satir["CW Durum"] = r["cw_senaryo"]
+            else:
+                satir["Sistem"] = "Hidrolik (boyutlar tahmini)"
+            tablo.append(satir)
 
         st.dataframe(tablo, use_container_width=True, hide_index=True)
 
@@ -839,24 +967,29 @@ for tab, sistem in zip(tabs, uygun):
 
         r = kombinasyonlar[secim_idx]
 
-        # CW mesajı
-        if r["cw_konum"] == "Yandan":
-            if r["cw_senaryo"] == "cakisiyor":
-                st.info(f"ℹ️ {r['cw_mesaj']}")
-            else:
-                st.success(f"✅ {r['cw_mesaj']}")
+        # CW mesajı (sadece traksiyonlu sistemlerde)
+        if not r.get("hidrolik"):
+            if r["cw_konum"] == "Yandan":
+                if r["cw_senaryo"] == "cakisiyor":
+                    st.info(f"ℹ️ {r['cw_mesaj']}")
+                else:
+                    st.success(f"✅ {r['cw_mesaj']}")
 
         # SVG çizim — uid ile clipPath çakışmasını önle
         uid = f"{sistem['id']}_{secim_idx}"
-        svg_html, svg_h = svg_ciz(r, kyg, kyd, uid=uid)
+        if r.get("hidrolik"):
+            svg_html, svg_h = svg_ciz_hidrolik_wip(r, kyg, kyd, uid=uid)
+        else:
+            svg_html, svg_h = svg_ciz(r, kyg, kyd, uid=uid)
         svg_cleaned = svg_html.replace("\n", " ")
         st.markdown(f'<div align="center">{svg_cleaned}</div>', unsafe_allow_html=True)
 
-        # Kapı mekanizması SVG'sini çizdir
-        st.markdown("#### 🚪 Kapı Mekanizması — Üstten Görünüş")
-        kapi_html, kapi_h = kapi_mekanizmasi_svg(r["mek"], r["kbg"], r["ll"], r["tmg"])
-        kapi_cleaned = kapi_html.replace("\n", " ")
-        st.markdown(f'<div align="center">{kapi_cleaned}</div>', unsafe_allow_html=True)
+        # Kapı mekanizması SVG'sini çizdir (sadece traksiyonlu sistemlerde)
+        if not r.get("hidrolik"):
+            st.markdown("#### 🚪 Kapı Mekanizması — Üstten Görünüş")
+            kapi_html, kapi_h = kapi_mekanizmasi_svg(r["mek"], r["kbg"], r["ll"], r["tmg"])
+            kapi_cleaned = kapi_html.replace("\n", " ")
+            st.markdown(f'<div align="center">{kapi_cleaned}</div>', unsafe_allow_html=True)
 
         # Özet kutucuklar
         col1, col2, col3, col4 = st.columns(4)
